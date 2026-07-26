@@ -1,7 +1,7 @@
 const CACHE = "ai-secretary-v3";
 
 // Static assets to precache on install
-const SHELL = ["/", "/manifest.json", "/icon.svg"];
+const SHELL = ["/", "/manifest.json", "/icon.svg", "/icon-192.png", "/icon-512.png"];
 
 // ── Install ──
 self.addEventListener("install", (event) => {
@@ -78,8 +78,8 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body: body || "",
-      icon: icon || "/icon.svg",
-      badge: "/icon.svg",
+      icon: icon || "/icon-192.png",
+      badge: "/icon-192.png",
       tag: tag || eventId || title,
       data: { url: url || "/", eventId },
       vibrate: [200, 100, 200],
