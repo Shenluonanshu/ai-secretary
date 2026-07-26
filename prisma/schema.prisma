@@ -1,0 +1,34 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Event {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  startsAt    DateTime
+  endsAt      DateTime
+  allDay      Boolean  @default(false)
+  timezone    String   @default("Asia/Shanghai")
+  reminders   String   @default("[30]")
+  recurrence  String   @default("none")
+  source      String   @default("manual")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([startsAt])
+  @@index([source])
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  endpoint  String   @unique
+  keys      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
