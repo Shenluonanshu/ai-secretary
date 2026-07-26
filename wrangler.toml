@@ -7,4 +7,4 @@ pages_build_output_dir = ".vercel/output/static"
 [[d1_databases]]
 binding = "DB"
 database_name = "ai-secretary-db"
-database_id = "your-database-id-here"
+database_id = "be74e636-2bbc-4acd-92dd-ab62e059e708"

@@ -1,38 +1,82 @@
-import { SignJWT, jwtVerify } from "jose";
-import { NextRequest } from "next/server";
-
-const getSecret = () => {
+// Edge-compatible JWT using Web Crypto API
+const getSecretKey = async () => {
   const secret = process.env.JWT_SECRET || process.env.AUTH_PASSPHRASE || "ai-secretary-default";
-  return new TextEncoder().encode(secret);
+  const keyData = new TextEncoder().encode(secret);
+  return crypto.subtle.importKey(
+    "raw",
+    keyData.buffer as ArrayBuffer,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
 };
 
 const AUTH_PASSPHRASE = process.env.AUTH_PASSPHRASE || "admin";
 
-export async function createToken(passphrase: string): Promise<string | null> {
-  if (passphrase !== AUTH_PASSPHRASE) return null;
-  return new SignJWT({ sub: "user" })
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime("30d")
-    .sign(getSecret());
+function base64urlEncode(buffer: Uint8Array): string {
+  return btoa(String.fromCharCode(...buffer))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
-export async function verifyToken(token: string): Promise<boolean> {
+function base64urlDecode(str: string): Uint8Array {
+  str = str.replace(/-/g, "+").replace(/_/g, "/");
+  while (str.length % 4) str += "=";
+  return Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
+}
+
+async function sign(payload: Record<string, unknown>, key: CryptoKey): Promise<string> {
+  const header = { alg: "HS256", typ: "JWT" };
+  const enc = new TextEncoder();
+  const encodedHeader = base64urlEncode(enc.encode(JSON.stringify(header)));
+  const encodedPayload = base64urlEncode(enc.encode(JSON.stringify(payload)));
+  const data = enc.encode(`${encodedHeader}.${encodedPayload}`);
+  const sig = await crypto.subtle.sign("HMAC", key, data.buffer as ArrayBuffer);
+  return `${encodedHeader}.${encodedPayload}.${base64urlEncode(new Uint8Array(sig))}`;
+}
+
+async function verify(token: string, key: CryptoKey): Promise<Record<string, unknown> | null> {
   try {
-    await jwtVerify(token, getSecret());
-    return true;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const enc = new TextEncoder();
+    const data = enc.encode(`${parts[0]}.${parts[1]}`);
+    const signature = base64urlDecode(parts[2]);
+    const valid = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      signature.buffer as ArrayBuffer,
+      data.buffer as ArrayBuffer,
+    );
+    if (!valid) return null;
+    return JSON.parse(new TextDecoder().decode(base64urlDecode(parts[1])));
   } catch {
-    return false;
+    return null;
   }
 }
 
-export function getTokenFromRequest(request: NextRequest): string | null {
+export async function createToken(passphrase: string): Promise<string | null> {
+  if (passphrase !== AUTH_PASSPHRASE) return null;
+  const key = await getSecretKey();
+  const now = Math.floor(Date.now() / 1000);
+  return sign({ sub: "user", iat: now, exp: now + 30 * 24 * 60 * 60 }, key);
+}
+
+export async function verifyToken(token: string): Promise<boolean> {
+  const key = await getSecretKey();
+  const payload = await verify(token, key);
+  if (!payload) return false;
+  return typeof payload.exp === "number" && payload.exp > Math.floor(Date.now() / 1000);
+}
+
+export function getTokenFromRequest(request: Request): string | null {
   const auth = request.headers.get("authorization");
   if (!auth?.startsWith("Bearer ")) return null;
   return auth.slice(7);
 }
 
-export async function validateRequest(request: NextRequest): Promise<boolean> {
+export async function validateRequest(request: Request): Promise<boolean> {
   const token = getTokenFromRequest(request);
   if (!token) return false;
   return verifyToken(token);

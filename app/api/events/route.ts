@@ -1,6 +1,8 @@
+export const runtime = "edge";
+
 import { NextRequest, NextResponse } from "next/server";
-import { onCloudflare } from "@/lib/cf";
 import type { EventDraft } from "@/lib/types";
+import { onCloudflare } from "@/lib/cf";
 
 export async function GET() {
   if (onCloudflare()) {

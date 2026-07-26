@@ -1,0 +1,48 @@
+{
+  "name": "知行 AI 秘书",
+  "short_name": "AI 秘书",
+  "description": "你的日程与行程助手 — 自然语言创建、语音录入、智能提醒",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#f6f7fb",
+  "theme_color": "#3446d3",
+  "lang": "zh-CN",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "新建日程",
+      "short_name": "新建",
+      "description": "快速创建日程",
+      "url": "/#new",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "语音录入",
+      "short_name": "语音",
+      "description": "通过语音创建日程",
+      "url": "/#voice",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

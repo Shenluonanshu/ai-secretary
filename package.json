@@ -10,7 +10,7 @@
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "npx tsx scripts/migrate-json-to-db.ts",
-    "cf:build": "next build && npx @cloudflare/next-on-pages",
+    "cf:build": "next build && npx.cmd vercel build && npx.cmd @cloudflare/next-on-pages",
     "cf:deploy": "npm run cf:build && npx wrangler pages deploy",
     "cf:db:create": "npx wrangler d1 create ai-secretary-db",
     "cf:db:migrate": "npx wrangler d1 execute ai-secretary-db --file=./migrations/001_initial.sql"
@@ -34,6 +34,7 @@
     "sharp": "^0.35.3",
     "tsx": "^4.0.0",
     "typescript": "^5.8.0",
+    "vercel": "^47.0.4",
     "wrangler": "^3.114.17"
   }
 }
