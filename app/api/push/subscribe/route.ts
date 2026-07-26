@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { onCloudflare } from "@/lib/cf";
 
 export async function POST(request: NextRequest) {
   const { endpoint, keys } = await request.json();
@@ -7,12 +7,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "缺少订阅信息" }, { status: 400 });
   }
 
-  await prisma.pushSubscription.upsert({
-    where: { endpoint },
-    update: { keys: JSON.stringify(keys) },
-    create: { endpoint, keys: JSON.stringify(keys) },
-  });
-
+  if (onCloudflare()) {
+    const { addPushSubscription } = await import("@/lib/events-d1");
+    await addPushSubscription(endpoint, JSON.stringify(keys));
+  } else {
+    const { prisma } = await import("@/lib/db");
+    await prisma.pushSubscription.upsert({
+      where: { endpoint },
+      update: { keys: JSON.stringify(keys) },
+      create: { endpoint, keys: JSON.stringify(keys) },
+    });
+  }
   return NextResponse.json({ ok: true });
 }
 
@@ -22,6 +27,12 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "缺少 endpoint" }, { status: 400 });
   }
 
-  await prisma.pushSubscription.deleteMany({ where: { endpoint } });
+  if (onCloudflare()) {
+    const { removePushSubscription } = await import("@/lib/events-d1");
+    await removePushSubscription(endpoint);
+  } else {
+    const { prisma } = await import("@/lib/db");
+    await prisma.pushSubscription.deleteMany({ where: { endpoint } });
+  }
   return NextResponse.json({ ok: true });
 }

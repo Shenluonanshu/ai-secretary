@@ -9,7 +9,11 @@
     "check": "tsc --noEmit",
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
-    "db:migrate": "npx tsx scripts/migrate-json-to-db.ts"
+    "db:migrate": "npx tsx scripts/migrate-json-to-db.ts",
+    "cf:build": "next build && npx @cloudflare/next-on-pages",
+    "cf:deploy": "npm run cf:build && npx wrangler pages deploy",
+    "cf:db:create": "npx wrangler d1 create ai-secretary-db",
+    "cf:db:migrate": "npx wrangler d1 execute ai-secretary-db --file=./migrations/001_initial.sql"
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",
@@ -21,6 +25,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.16",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -28,6 +33,7 @@
     "prisma": "^6.0.0",
     "sharp": "^0.35.3",
     "tsx": "^4.0.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "wrangler": "^3.114.17"
   }
 }

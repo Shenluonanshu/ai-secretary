@@ -1,43 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import {
-  sendPushNotification,
-  wasReminderSent,
-  markReminderSent,
-  getVapidPublicKey,
-} from "@/lib/push";
+import { onCloudflare } from "@/lib/cf";
 
-// GET: Get VAPID public key for client-side subscription
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get("action");
 
   if (action === "key") {
+    // Web Push VAPID keys — Cloudflare doesn't support node web-push
+    if (onCloudflare()) {
+      return NextResponse.json({
+        publicKey: process.env.VAPID_PUBLIC_KEY || "",
+      });
+    }
+    const { getVapidPublicKey } = await import("@/lib/push");
     return NextResponse.json({ publicKey: getVapidPublicKey() });
   }
 
-  // Check for pending reminders and send push notifications
-  const now = new Date();
-  const soon = new Date(now.getTime() + 60_000); // Next 60 seconds
+  // Reminder check
+  if (onCloudflare()) {
+    // Cloudflare: simplified reminder check (web-push not available)
+    return NextResponse.json({
+      sent: 0,
+      message: "Web Push 在 Cloudflare 环境中暂不可用，请在浏览器通知授权后使用客户端提醒。",
+    });
+  }
 
-  // Find events that have reminders due within the next minute
+  const now = new Date();
+  const soon = new Date(now.getTime() + 60_000);
+  const { prisma } = await import("@/lib/db");
+  const { sendPushNotification, wasReminderSent, markReminderSent } =
+    await import("@/lib/push");
+
   const events = await prisma.event.findMany({
-    where: {
-      startsAt: { lte: soon },
-    },
+    where: { startsAt: { lte: soon } },
     orderBy: { startsAt: "asc" },
   });
 
   let sent = 0;
-
   for (const event of events) {
     const reminders: number[] = JSON.parse(event.reminders);
     for (const minutesBefore of reminders) {
       const reminderTime = new Date(
         new Date(event.startsAt).getTime() - minutesBefore * 60_000,
       );
-
-      // If reminder time is within the window and hasn't been sent
       if (
         reminderTime <= soon &&
         reminderTime >= now &&
@@ -46,7 +51,7 @@ export async function GET(request: NextRequest) {
         const subscriptions = await prisma.pushSubscription.findMany();
         for (const sub of subscriptions) {
           const keys = JSON.parse(sub.keys);
-          const valid = await sendPushNotification(
+          await sendPushNotification(
             { endpoint: sub.endpoint, keys },
             {
               title: `提醒：${event.title}`,
@@ -54,13 +59,6 @@ export async function GET(request: NextRequest) {
               eventId: event.id,
             },
           );
-
-          // Clean up invalid subscriptions
-          if (!valid) {
-            await prisma.pushSubscription
-              .delete({ where: { id: sub.id } })
-              .catch(() => undefined);
-          }
         }
         markReminderSent(event.id, minutesBefore);
         sent++;
