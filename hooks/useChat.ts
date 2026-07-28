@@ -114,11 +114,15 @@ export function useChat() {
       }
 
       // Handle structured response
+      // Render messages first (if any)
       if (data.messages) {
         for (const m of data.messages) {
           addMessage({ ...m, id: m.id || crypto.randomUUID(), timestamp: m.timestamp || new Date().toISOString() });
         }
-      } else if (data.draft || data.event) {
+      }
+
+      // Render event card (can coexist with messages above)
+      if (data.draft || data.event) {
         const eventData = (data.event || data.draft)!;
         const event: CalendarEvent = "id" in eventData ? eventData as CalendarEvent : {
           ...eventData as EventDraft,
@@ -126,17 +130,18 @@ export function useChat() {
           createdAt: new Date().toISOString(),
         };
 
-        // Track the temp id for confirmation
         eventIdRef.current.set(event.id, event.id);
 
-        addMessage({
-          id: crypto.randomUUID(),
-          role: "assistant", type: "text",
-          content: "已为你解析日程，确认信息无误后保存：",
-          timestamp: new Date().toISOString(),
-        });
+        // Only add the default text if no custom messages were provided
+        if (!data.messages?.length) {
+          addMessage({
+            id: crypto.randomUUID(),
+            role: "assistant", type: "text",
+            content: "已为你解析日程，确认信息无误后保存：",
+            timestamp: new Date().toISOString(),
+          });
+        }
 
-        // Add event card in confirm mode
         const eventMsgId = crypto.randomUUID();
         addMessage({
           id: eventMsgId,
@@ -149,34 +154,33 @@ export function useChat() {
         });
         // Store mapping: eventId -> messageId
         eventIdRef.current.set(event.id, eventMsgId);
-      } else if (data.events) {
-        // Multiple events (query result)
+      }
+
+      if (!data.messages?.length && !data.draft && !data.event && data.events) {
         addMessage({
           id: crypto.randomUUID(),
-          role: "assistant",
-          type: "text",
+          role: "assistant", type: "text",
           content: `找到 ${data.events.length} 个日程：`,
           timestamp: new Date().toISOString(),
         });
         addMessage({
           id: crypto.randomUUID(),
-          role: "assistant",
-          type: "event_list",
-          content: "",
-          events: data.events,
+          role: "assistant", type: "event_list",
+          content: "", events: data.events,
           timestamp: new Date().toISOString(),
         });
-      } else if (data.briefing) {
+      }
+
+      if (!data.messages?.length && !data.draft && !data.event && !data.events && data.briefing) {
         addMessage({
           id: crypto.randomUUID(),
-          role: "assistant",
-          type: "briefing",
-          content: "",
-          briefing: data.briefing,
+          role: "assistant", type: "briefing",
+          content: "", briefing: data.briefing,
           timestamp: new Date().toISOString(),
         });
-      } else {
-        // Plain text fallback
+      }
+
+      if (!data.messages?.length && !data.draft && !data.event && !data.events && !data.briefing) {
         addMessage({
           id: crypto.randomUUID(),
           role: "assistant", type: "text",
