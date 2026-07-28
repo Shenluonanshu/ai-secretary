@@ -76,9 +76,8 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
     unsubs.push(
       provider.onResult((result) => {
         setLastResult(result);
-        if (result.isFinal) {
-          setIsListening(false);
-        }
+        // Don't stop listening — continuous recognition keeps going
+        // User must click the button to stop
       }),
     );
     unsubs.push(
@@ -89,6 +88,7 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
     );
     unsubs.push(
       provider.onEnd(() => {
+        // Only stop listening when recognition truly ends (not auto-restarting)
         setIsListening(false);
       }),
     );
