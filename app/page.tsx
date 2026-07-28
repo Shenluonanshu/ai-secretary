@@ -64,6 +64,7 @@ export default function Home() {
   // ── Speech ──
   const {
     isListening,
+    lastResult,
     error: speechError,
     startListening,
     stopListening,
@@ -85,6 +86,16 @@ export default function Home() {
   useEffect(() => {
     if (speechError) setNotice(speechError);
   }, [speechError]);
+
+  // Speech result → fill input (don't auto-send, let user review)
+  useEffect(() => {
+    if (lastResult?.text) {
+      setPrompt(lastResult.text);
+      if (lastResult.isFinal) {
+        setNotice("语音识别完成，确认后点击发送 →");
+      }
+    }
+  }, [lastResult, setPrompt]);
 
   // Load events on mount
   const router = useRouter();
@@ -172,11 +183,7 @@ export default function Home() {
   const handleVoiceToggle = useCallback(async () => {
     if (isListening) {
       stopListening();
-      // The speech result will be processed in the speech context
-      if (prompt.trim()) {
-        await sendMessage(prompt);
-        setPrompt("");
-      }
+      // Speech result will fill the input box via lastResult effect above
     } else {
       if (!speechSupported) {
         const caps = detectCapabilities();
@@ -185,23 +192,38 @@ export default function Home() {
       }
       try {
         await startListening();
-        setNotice("正在聆听…");
+        setNotice("🎤 正在聆听…说完后再次点击结束");
       } catch {
         setNotice("语音识别无法启动。");
       }
     }
-  }, [isListening, speechSupported, startListening, stopListening, prompt, sendMessage, setPrompt]);
+  }, [isListening, speechSupported, startListening, stopListening]);
 
-  const handleExport = useCallback(() => {
-    const blob = new Blob([JSON.stringify(events, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `ai-secretary-${new Date().toLocaleDateString("en-CA")}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setNotice("数据已导出。");
-  }, [events]);
+  const handleExport = useCallback(async () => {
+    try {
+      // Fetch all data types
+      const [eventsRes, todosRes] = await Promise.all([
+        authFetch("/api/events"),
+        authFetch("/api/todos").catch(() => null),
+      ]);
+      const events = await eventsRes.json();
+      const todos = todosRes ? await todosRes.json() : [];
+      const habitsRes = await authFetch("/api/habits").catch(() => null);
+      const habits = habitsRes ? await habitsRes.json() : [];
+
+      const fullExport = { events, todos, habits, exportedAt: new Date().toISOString() };
+      const blob = new Blob([JSON.stringify(fullExport, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ai-secretary-${new Date().toLocaleDateString("en-CA")}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setNotice(`已导出 ${events.length} 日程 + ${todos.length} 待办 + ${habits.length} 习惯。`);
+    } catch {
+      setNotice("导出失败，请重试。");
+    }
+  }, []);
 
   return (
     <div className="chat-shell">
