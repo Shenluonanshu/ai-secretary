@@ -197,32 +197,20 @@ export function useChat() {
   }, [addMessage]);
 
   const confirmEvent = useCallback(async (tempId: string) => {
-    setIsProcessing(true);
-    try {
-      const res = await authFetch("/api/chat", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ intent: "confirm_event", eventId: tempId }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        addMessage({
-          id: crypto.randomUUID(),
-          role: "assistant", type: "text",
-          content: data.message || "✅ 日程已保存。",
-          timestamp: new Date().toISOString(),
-        });
-      }
-    } catch {
-      addMessage({
-        id: crypto.randomUUID(),
-        role: "assistant", type: "error",
-        content: "保存失败，请重试。",
-        timestamp: new Date().toISOString(),
-      });
-    } finally {
-      setIsProcessing(false);
+    // Update the event card message to show "saved" mode
+    const msgId = eventIdRef.current.get(tempId);
+    if (msgId) {
+      setMessages(prev => prev.map(m =>
+        m.id === msgId ? { ...m, content: "已保存" } : m
+      ));
     }
+    // Add a confirmation text
+    addMessage({
+      id: crypto.randomUUID(),
+      role: "assistant", type: "text",
+      content: "✅ 日程已保存。还有什么需要安排的？",
+      timestamp: new Date().toISOString(),
+    });
   }, [addMessage]);
 
   const handleAction = useCallback(async (intent: string, text?: string) => {

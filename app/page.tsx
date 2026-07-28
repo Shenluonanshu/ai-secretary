@@ -74,6 +74,22 @@ export default function Home() {
   // ── UI state ──
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [greeting, setGreeting] = useState("AI 秘书");
+
+  // Dynamic greeting
+  useEffect(() => {
+    const update = () => {
+      const h = new Date().getHours();
+      setGreeting(
+        h < 6 ? "夜深了 🌙" : h < 9 ? "早上好 ☀️" :
+        h < 12 ? "上午好 💪" : h < 14 ? "中午好 🍜" :
+        h < 18 ? "下午好 🚀" : "晚上好 🌆"
+      );
+    };
+    update();
+    const t = setInterval(update, 60000);
+    return () => clearInterval(t);
+  }, []);
 
   // Auto-dismiss notice
   useEffect(() => {
@@ -230,6 +246,7 @@ export default function Home() {
       <ChatHeader
         onMenuToggle={() => setDrawerOpen(true)}
         onMoreToggle={handleExport}
+        title={greeting}
       />
 
       <ChatMessageList
