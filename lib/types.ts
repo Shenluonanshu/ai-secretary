@@ -129,6 +129,8 @@ export interface BriefingData {
   habits: HabitWithStreak[];
   freeSlots: string[];
   suggestion?: string;
+  holidayCountdown?: string;
+  upcomingHolidays?: { date: string; name: string }[];
 }
 
 // ── 用户设置 ──

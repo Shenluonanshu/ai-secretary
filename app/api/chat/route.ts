@@ -4,6 +4,7 @@ import type { LLMProvider, ParseResult } from "@/lib/llm/types";
 import { onCloudflare } from "@/lib/cf";
 import { classifyIntent, isEventIntent } from "@/lib/intent-classifier";
 import { generateResponse, generateChatResponse } from "@/lib/conversation";
+import { getNextHolidayCountdown, getUpcomingHolidays, detectHolidayMention, getHolidayName, getDayType } from "@/lib/holidays";
 import type { CalendarEvent, EventDraft, ChatMessage, BriefingData, HabitWithStreak } from "@/lib/types";
 
 const provider: LLMProvider = createProvider();
@@ -42,13 +43,32 @@ export async function POST(request: NextRequest) {
       return (result._defaultText as string) || "收到 ✅";
     }
 
+    // Holiday queries: check before intent routing
+    if (text && /假期|放假|节假日|法定假日|什么.*假|哪天.*休|怎么.*放假|还有.*天.*节/.test(text)) {
+      const upcoming = getUpcomingHolidays(5);
+      const countdown = getNextHolidayCountdown();
+      if (upcoming.length > 0) {
+        const list = upcoming.map(h =>
+          `• ${h.name}：${new Date(h.date+"T00:00").toLocaleDateString("zh-CN",{month:"short",day:"numeric",weekday:"short"})}`
+        ).join("\n");
+        return NextResponse.json({ messages: [textMsg(`${countdown}\n\n最近的节假日：\n${list}`)] });
+      }
+    }
+
     switch (classification.intent) {
       // ── Briefing ──
       case "show_briefing": {
         const briefing: BriefingData = await getService().generateBriefing();
+        // Attach holiday info
+        const holidayCountdown = getNextHolidayCountdown();
+        const upcomingHolidays = getUpcomingHolidays(3).map(h => ({ date: h.date, name: h.name }));
+        briefing.holidayCountdown = holidayCountdown;
+        briefing.upcomingHolidays = upcomingHolidays;
+
+        const holidayExtra = holidayCountdown ? `\n${holidayCountdown}` : "";
         const msg = await reply("show_briefing", {
-          _defaultText: `📊 ${briefing.greeting}\n今天 ${briefing.eventCount} 个日程，${briefing.pendingTodoCount}/${briefing.todoCount} 个待办`,
-          briefing,
+          _defaultText: `📊 ${briefing.greeting}\n今天 ${briefing.eventCount} 个日程，${briefing.pendingTodoCount}/${briefing.todoCount} 个待办${holidayExtra}`,
+          briefing, holidayCountdown,
         });
         return NextResponse.json({
           briefing,
@@ -271,7 +291,18 @@ export async function POST(request: NextRequest) {
             new Date(e.startsAt) < new Date(event.endsAt) &&
             new Date(e.endsAt) > new Date(event.startsAt)
           );
-          const conflictText = conflict ? ` ⚠️ 与「${conflict.title}」时间重叠（${new Date(conflict.startsAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}-${new Date(conflict.endsAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}）` : "";
+          const conflictText = conflict ? ` ⚠️ 与「${conflict.title}」时间重叠` : "";
+
+          // Holiday awareness
+          const eventDate = event.startsAt.slice(0, 10);
+          const holidayName = getHolidayName(eventDate);
+          const dayType = getDayType(eventDate);
+          const holidayNote = holidayName
+            ? `\n🎉 ${new Date(eventDate).toLocaleDateString("zh-CN",{month:"short",day:"numeric"})}是${holidayName}假期`
+            : dayType === "workday"
+            ? `\n⚠️ ${new Date(eventDate).toLocaleDateString("zh-CN",{month:"short",day:"numeric"})}是调休工作日`
+            : "";
+          const holidayMentionInText = detectHolidayMention(text);
 
           // Find alternative slots
           const dayDate = event.startsAt.slice(0, 10);
@@ -281,13 +312,15 @@ export async function POST(request: NextRequest) {
             alternatives = `\n\n💡 可选空闲时段：${slots.slice(0, 3).join("、")}`;
           }
 
+          const extraInfo = [conflictText, holidayNote].filter(Boolean).join("");
           const msg = await reply("create_event", {
-            _defaultText: `已解析日程${conflictText}，确认后保存 👇${alternatives}`,
+            _defaultText: `已解析日程${extraInfo ? extraInfo : ""}，确认后保存 👇${alternatives}`,
             title: event.title,
             time: event.allDay ? "全天" : new Date(event.startsAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
             hasConflict: !!conflict,
             conflictTitle: conflict?.title,
             alternatives: slots.join("、"),
+            holidayName, holidayMention: holidayMentionInText,
           });
           return NextResponse.json({
             event, draft: result.draft,

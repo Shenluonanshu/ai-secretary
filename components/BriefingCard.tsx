@@ -48,6 +48,18 @@ export function BriefingCard({ briefing }: BriefingCardProps) {
           <p>{briefing.suggestion}</p>
         </div>
       )}
+
+      {briefing.holidayCountdown && (
+        <div className="br-section" style={{ marginTop: 14, padding: "10px 12px", background: "var(--blue-soft)", borderRadius: "var(--radius-sm)" }}>
+          <h4 style={{ marginBottom: 2 }}>🎊 节假日</h4>
+          <p style={{ fontWeight: 600 }}>{briefing.holidayCountdown}</p>
+          {briefing.upcomingHolidays && briefing.upcomingHolidays.slice(1, 3).map(h => (
+            <p key={h.date} style={{ fontSize: 12, margin: "1px 0", color: "var(--ink-soft)" }}>
+              📅 {h.name}：{new Date(h.date).toLocaleDateString("zh-CN", { month: "short", day: "numeric", weekday: "short" })}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
