@@ -1,6 +1,6 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CalendarEvent, EventDraft, TodoItem, HabitWithStreak } from "@/lib/types";
+import { useCallback, useEffect, useState } from "react";
+import type { CalendarEvent, TodoItem, HabitWithStreak } from "@/lib/types";
 import { useEvents } from "@/hooks/useEvents";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useChat } from "@/hooks/useChat";
@@ -35,14 +35,9 @@ export default function Home() {
   // ── Event management (kept for notifications + persistence) ──
   const {
     events,
-    draft,
-    editing,
     prompt,
     setPrompt,
-    setEditing,
-    setDraft,
     load,
-    update,
     persist,
     remove,
   } = useEvents();
@@ -161,23 +156,35 @@ export default function Home() {
   }, [messages, persist, confirmEvent]);
 
   const handleEditEvent = useCallback((id: string) => {
-    const ev = events.find((e: CalendarEvent) => e.id === id);
-    if (ev) {
-      setEditing(ev.id);
-      setDraft({
-        title: ev.title,
-        description: ev.description,
-        startsAt: ev.startsAt,
-        endsAt: ev.endsAt,
-        allDay: ev.allDay,
-        timezone: ev.timezone,
-        reminders: ev.reminders,
-        recurrence: ev.recurrence,
-        source: ev.source,
-      });
-      setNotice("已加载到编辑区，修改后点击保存。");
+    // Look in both DB events and chat messages
+    let ev: CalendarEvent | undefined = events.find((e: CalendarEvent) => e.id === id);
+    // Also check in chat messages (pending events)
+    if (!ev) {
+      for (const m of messages) {
+        if (m.event?.id === id) { ev = m.event; break; }
+        if (m.events) {
+          const found = m.events.find((e: CalendarEvent) => e.id === id);
+          if (found) { ev = found; break; }
+        }
+      }
     }
-  }, [events, setEditing, setDraft]);
+
+    if (ev) {
+      // Pre-fill the chat input with event info for re-editing
+      const timeDesc = ev.allDay
+        ? new Date(ev.startsAt).toLocaleDateString("zh-CN", { month: "short", day: "numeric" }) + "全天"
+        : new Date(ev.startsAt).toLocaleDateString("zh-CN", { month: "short", day: "numeric" }) +
+          " " + new Date(ev.startsAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+      setPrompt(`${timeDesc} ${ev.title}${ev.description ? "，" + ev.description : ""}`);
+      setNotice("已填入输入框，修改后发送即可 →");
+      // Also delete the old one if it was already persisted
+      if (events.some(e => e.id === id)) {
+        remove(id);
+      }
+    } else {
+      setNotice("该日程信息暂不可编辑");
+    }
+  }, [events, messages, setPrompt, remove]);
 
   const handleDeleteEvent = useCallback(async (id: string) => {
     await remove(id);
