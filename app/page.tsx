@@ -6,6 +6,7 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { useChat } from "@/hooks/useChat";
 import { useSpeech } from "@/lib/speech/SpeechContext";
 import { authFetch } from "@/lib/api";
+import { getUnsupportedMessage, detectCapabilities } from "@/lib/feature-detect";
 import { ChatHeader } from "@/components/ChatHeader";
 import { ChatMessageList } from "@/components/ChatMessageList";
 import { ChatInput } from "@/components/ChatInput";
@@ -159,7 +160,8 @@ export default function Home() {
       }
     } else {
       if (!speechSupported) {
-        setNotice("当前浏览器不支持语音识别，请使用 Chrome 或 Edge。");
+        const caps = detectCapabilities();
+        setNotice(getUnsupportedMessage("voice", caps.browserType));
         return;
       }
       try {
