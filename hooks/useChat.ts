@@ -38,11 +38,26 @@ export function useChat() {
   const [isProcessing, setIsProcessing] = useState(false);
   const eventIdRef = useRef<Map<string, string>>(new Map());
 
-  // Persist messages
+  // Persist messages to localStorage (immediate) + server (debounced)
   useEffect(() => {
     if (messages.length > 0) {
       localStorage.setItem("chat_messages", JSON.stringify(messages.slice(-100)));
     }
+  }, [messages]);
+
+  // Persist to server (debounced, every 5s)
+  useEffect(() => {
+    if (messages.length <= 2) return; // Don't save just welcome messages
+    const timer = setTimeout(async () => {
+      try {
+        await authFetch("/api/conversation", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title: "对话", messages: messages.slice(-200) }),
+        });
+      } catch { /* background save, silent fail */ }
+    }, 5000);
+    return () => clearTimeout(timer);
   }, [messages]);
 
   const addMessage = useCallback((msg: ChatMessage) => {

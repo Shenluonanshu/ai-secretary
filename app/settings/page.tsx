@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { authFetch } from "@/lib/api";
 import { Drawer } from "@/components/Drawer";
 import { Toast } from "@/components/Toast";
 
@@ -90,6 +91,36 @@ export default function SettingsPage() {
           <span>导出日程数据</span>
           <button className="btn btn-primary" onClick={handleExport} disabled={exporting} style={{ fontSize: 12, padding: "5px 10px" }}>
             {exporting ? "导出中…" : "导出 JSON"}
+          </button>
+        </div>
+        <div className="settings-row">
+          <span>导入数据</span>
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              const input = document.createElement("input");
+              input.type = "file";
+              input.accept = ".json";
+              input.onchange = async (e) => {
+                const file = (e.target as HTMLInputElement).files?.[0];
+                if (!file) return;
+                const text = await file.text();
+                try {
+                  const data = JSON.parse(text);
+                  const res = await authFetch("/api/import", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify(data),
+                  });
+                  const result = await res.json();
+                  setNotice(res.ok ? `导入完成：${result.imported?.events || 0} 日程，${result.imported?.todos || 0} 待办` : "导入失败");
+                } catch { setNotice("文件格式错误"); }
+              };
+              input.click();
+            }}
+            style={{ fontSize: 12 }}
+          >
+            导入 JSON
           </button>
         </div>
         <div className="settings-row">
