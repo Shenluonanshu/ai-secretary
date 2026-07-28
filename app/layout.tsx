@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AuthGuard } from "@/components/AuthGuard";
 import { SpeechProvider } from "@/lib/speech/SpeechContext";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -51,9 +52,11 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </head>
       <body>
-        <AuthGuard>
-          <SpeechProvider>{children}</SpeechProvider>
-        </AuthGuard>
+        <ErrorBoundary>
+          <AuthGuard>
+            <SpeechProvider>{children}</SpeechProvider>
+          </AuthGuard>
+        </ErrorBoundary>
       </body>
     </html>
   );

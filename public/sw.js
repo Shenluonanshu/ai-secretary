@@ -23,6 +23,13 @@ self.addEventListener("activate", (event) =>
   ),
 );
 
+// ── Message handler (for skip waiting) ──
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
 // ── Fetch ──
 self.addEventListener("fetch", (event) => {
   const { request } = event;

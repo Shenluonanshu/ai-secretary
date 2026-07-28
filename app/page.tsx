@@ -7,6 +7,8 @@ import { useChat } from "@/hooks/useChat";
 import { useSpeech } from "@/lib/speech/SpeechContext";
 import { authFetch } from "@/lib/api";
 import { getUnsupportedMessage, detectCapabilities } from "@/lib/feature-detect";
+import { setupOfflineSync } from "@/lib/offline-queue";
+import { useRouter } from "next/navigation";
 import { ChatHeader } from "@/components/ChatHeader";
 import { ChatMessageList } from "@/components/ChatMessageList";
 import { ChatInput } from "@/components/ChatInput";
@@ -14,6 +16,11 @@ import { Drawer } from "@/components/Drawer";
 import { Toast } from "@/components/Toast";
 import { PushManager } from "@/components/PushManager";
 import { InstallPrompt } from "@/components/InstallPrompt";
+import { UpdateNotification } from "@/components/UpdateNotification";
+import { ChangelogModal } from "@/components/ChangelogModal";
+import { FeedbackButton } from "@/components/FeedbackButton";
+import { OnboardingGuide } from "@/components/OnboardingGuide";
+import { hasToken } from "@/lib/api";
 
 const fmt = (s: string, allDay = false) =>
   new Intl.DateTimeFormat("zh-CN", {
@@ -80,7 +87,19 @@ export default function Home() {
   }, [speechError]);
 
   // Load events on mount
+  const router = useRouter();
   useEffect(() => { load(); }, [load]);
+
+  // Offline sync setup
+  useEffect(() => {
+    const cleanup = setupOfflineSync(() => {
+      if (typeof window !== "undefined") {
+        return localStorage.getItem("auth_token");
+      }
+      return null;
+    });
+    return cleanup;
+  }, []);
 
   // ── Handlers ──
 
@@ -221,6 +240,10 @@ export default function Home() {
       <Toast message={notice} />
       <PushManager />
       <InstallPrompt />
+      <UpdateNotification />
+      <ChangelogModal />
+      <FeedbackButton />
+      <OnboardingGuide />
     </div>
   );
 }
