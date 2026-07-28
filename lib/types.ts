@@ -30,6 +30,7 @@ export type MessageType =
   | "text"
   | "event_card"
   | "event_list"
+  | "overview"
   | "todo_card"
   | "habit_card"
   | "briefing"

@@ -63,7 +63,7 @@ export function Drawer({ open, onClose, currentPage, onExport }: DrawerProps) {
           </button>
           {onExport && (
             <button onClick={onExport}>
-              <span className="nav-icon">📥</span> 导出数据
+              <span className="nav-icon">📊</span> 数据总览
             </button>
           )}
         </nav>

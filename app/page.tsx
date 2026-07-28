@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CalendarEvent, EventDraft } from "@/lib/types";
+import type { CalendarEvent, EventDraft, TodoItem, HabitWithStreak } from "@/lib/types";
 import { useEvents } from "@/hooks/useEvents";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useChat } from "@/hooks/useChat";
@@ -215,37 +215,37 @@ export default function Home() {
     }
   }, [isListening, speechSupported, startListening, stopListening]);
 
-  const handleExport = useCallback(async () => {
+  const handleOverview = useCallback(async () => {
     try {
-      // Fetch all data types
-      const [eventsRes, todosRes] = await Promise.all([
+      const [eventsRes, todosRes, habitsRes] = await Promise.all([
         authFetch("/api/events"),
         authFetch("/api/todos").catch(() => null),
+        authFetch("/api/habits").catch(() => null),
       ]);
-      const events = await eventsRes.json();
-      const todos = todosRes ? await todosRes.json() : [];
-      const habitsRes = await authFetch("/api/habits").catch(() => null);
-      const habits = habitsRes ? await habitsRes.json() : [];
+      const events: CalendarEvent[] = await eventsRes.json();
+      const todos: TodoItem[] = todosRes ? await todosRes.json() : [];
+      const habits: HabitWithStreak[] = habitsRes ? await habitsRes.json() : [];
 
-      const fullExport = { events, todos, habits, exportedAt: new Date().toISOString() };
-      const blob = new Blob([JSON.stringify(fullExport, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `ai-secretary-${new Date().toLocaleDateString("en-CA")}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setNotice(`已导出 ${events.length} 日程 + ${todos.length} 待办 + ${habits.length} 习惯。`);
+      addMessage({
+        id: crypto.randomUUID(),
+        role: "assistant",
+        type: "overview",
+        content: "",
+        events,
+        todos,
+        habits,
+        timestamp: new Date().toISOString(),
+      });
     } catch {
-      setNotice("导出失败，请重试。");
+      setNotice("加载失败，请重试。");
     }
-  }, []);
+  }, [addMessage]);
 
   return (
     <div className="chat-shell">
       <ChatHeader
         onMenuToggle={() => setDrawerOpen(true)}
-        onExport={handleExport}
+        onExport={handleOverview}
         title={greeting}
       />
 
@@ -274,7 +274,7 @@ export default function Home() {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         currentPage="chat"
-        onExport={handleExport}
+        onExport={handleOverview}
       />
 
       <Toast message={notice} />

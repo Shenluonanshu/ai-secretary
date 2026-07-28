@@ -7,6 +7,7 @@ import { BriefingCard } from "./BriefingCard";
 import { TodoCard } from "./TodoCard";
 import { HabitRow } from "./HabitRow";
 import { QuickActions } from "./QuickActions";
+import { DataOverview } from "./DataOverview";
 
 interface ChatMessageListProps {
   messages: ChatMessageType[];
@@ -136,6 +137,22 @@ export function ChatMessageList({
               <div style={{ flex: 1, minWidth: 0 }}>
                 {msg.content && <div className="bubble" style={{ marginBottom: 6 }}>{msg.content}</div>}
                 <QuickActions actions={msg.actions} onAction={onAction} />
+              </div>
+            </div>
+          );
+        }
+
+        // Data overview
+        if (msg.type === "overview" && msg.events) {
+          return (
+            <div key={msg.id} className="msg assistant" style={{ maxWidth: "98%" }}>
+              <div className="avatar">🤖</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <DataOverview
+                  events={msg.events}
+                  todos={msg.todos || []}
+                  habits={msg.habits || []}
+                />
               </div>
             </div>
           );

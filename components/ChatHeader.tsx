@@ -55,7 +55,7 @@ export function ChatHeader({ onMenuToggle, onExport, online = true, title = "AI 
                 fontSize: 13, textAlign: "left", color: "var(--ink-soft)",
               }}
             >
-              📥 导出数据
+              📊 数据总览
             </button>
           </div>
         )}
