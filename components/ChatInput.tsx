@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useEffect, type KeyboardEvent } from "react";
+import { useRef, useEffect, useState, type KeyboardEvent } from "react";
 
 interface ChatInputProps {
   value: string;
@@ -21,6 +21,7 @@ export function ChatInput({
   placeholder = "告诉 AI 秘书你想做什么…",
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -37,6 +38,23 @@ export function ChatInput({
     }
   }, [isProcessing, value]);
 
+  // Keyboard-aware positioning (iOS visualViewport)
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.visualViewport) return;
+    const handler = () => {
+      const vh = window.visualViewport?.height || window.innerHeight;
+      const winH = window.innerHeight;
+      const diff = winH - vh;
+      setKeyboardHeight(diff > 100 ? diff : 0);
+    };
+    window.visualViewport.addEventListener("resize", handler);
+    window.visualViewport.addEventListener("scroll", handler);
+    return () => {
+      window.visualViewport?.removeEventListener("resize", handler);
+      window.visualViewport?.removeEventListener("scroll", handler);
+    };
+  }, []);
+
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -47,7 +65,9 @@ export function ChatInput({
   const canSend = value.trim().length > 0 && !isProcessing;
 
   return (
-    <div className="chat-input-bar" role="form" aria-label="消息输入">
+    <div className="chat-input-bar" role="form" aria-label="消息输入"
+      style={keyboardHeight > 0 ? { paddingBottom: `calc(${keyboardHeight}px - var(--safe-bottom))` } : undefined}
+    >
       <button
         className={`voice-btn ${isListening ? "listening" : ""}`}
         onClick={onVoiceToggle}

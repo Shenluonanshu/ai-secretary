@@ -344,3 +344,23 @@ a{color:inherit;text-decoration:none}
   .chat-header .menu-btn{display:none}
   .drawer-panel,.drawer-overlay{display:none}
 }
+
+/* ── Mobile refinements ── */
+@media(max-width:680px){
+  /* Larger touch targets */
+  .chat-input-bar .voice-btn,.chat-input-bar .send-btn{width:44px;height:44px}
+  .chat-header .menu-btn,.chat-header .more-btn{width:44px;height:44px}
+  .chip{min-height:36px;display:inline-flex;align-items:center}
+  /* Prevent page overscroll refresh */
+  html{overscroll-behavior:none}
+  body{overscroll-behavior:none}
+  .chat-messages{overscroll-behavior:contain}
+  /* Dark mode tab bar */
+  [data-theme="dark"] .chat-input-bar{background:#1a1f2a;border-top-color:#2a3040}
+  [data-theme="dark"] .chat-header{background:#1a1f2a;border-bottom-color:#2a3040}
+  /* Keyboard up: push input above keyboard */
+  .chat-input-bar{z-index:10;position:sticky;bottom:0}
+  /* Bottom nav styling */
+  .bottom-nav{display:grid}
+}
+
