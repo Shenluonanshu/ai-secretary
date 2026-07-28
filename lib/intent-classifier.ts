@@ -18,6 +18,7 @@ export type Intent =
   | "query_habits"
   | "show_briefing"
   | "check_free_time"
+  | "evening_review"
   | "general_chat"
   | "help";
 
@@ -149,6 +150,17 @@ const PATTERNS: { intent: Intent; patterns: RegExp[]; weight: number }[] = [
       /(?:你[能会]|可以).*(?:做|干|帮|帮助|怎么用)/,
     ],
     weight: 0.9,
+  },
+  {
+    intent: "evening_review",
+    patterns: [
+      /(?:今天|今日).*(?:回顾|总结|复盘|怎么样|做了|完成)/,
+      /(?:晚间|晚上).*(?:回顾|总结|汇总|看一下)/,
+      /晚安.*(?:明天|今日)/,
+      /今天.*(?:了|完).*(?:什么|怎样|如何)/,
+      /(?:回顾|总结|复盘).*(?:今天|今日|一下)/,
+    ],
+    weight: 0.85,
   },
 ];
 

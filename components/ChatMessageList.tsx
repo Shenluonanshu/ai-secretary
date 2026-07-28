@@ -8,6 +8,7 @@ import { TodoCard } from "./TodoCard";
 import { HabitRow } from "./HabitRow";
 import { QuickActions } from "./QuickActions";
 import { DataOverview } from "./DataOverview";
+import { EveningReview } from "./EveningReview";
 
 interface ChatMessageListProps {
   messages: ChatMessageType[];
@@ -142,17 +143,27 @@ export function ChatMessageList({
           );
         }
 
-        // Data overview
+        // Data overview / Evening review
         if (msg.type === "overview" && msg.events) {
+          const hour = new Date().getHours();
+          const isEvening = hour >= 18 || hour < 6;
           return (
             <div key={msg.id} className="msg assistant" style={{ maxWidth: "98%" }}>
               <div className="avatar">🤖</div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <DataOverview
-                  events={msg.events}
-                  todos={msg.todos || []}
-                  habits={msg.habits || []}
-                />
+                {isEvening ? (
+                  <EveningReview
+                    events={msg.events}
+                    todos={msg.todos || []}
+                    habits={msg.habits || []}
+                  />
+                ) : (
+                  <DataOverview
+                    events={msg.events}
+                    todos={msg.todos || []}
+                    habits={msg.habits || []}
+                  />
+                )}
               </div>
             </div>
           );

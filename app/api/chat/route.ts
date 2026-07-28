@@ -75,19 +75,29 @@ export async function POST(request: NextRequest) {
       case "query_todos":
       case "complete_todo": {
         const todos = await getService().getAllTodos();
-        const pending = todos.filter(t => !t.completed).length;
+        const pendingTodos = todos.filter(t => !t.completed);
+        const pending = pendingTodos.length;
         if (todos.length === 0) {
           const msg = await reply("query_todos", { _defaultText: "目前没有待办事项 ✅ 需要我帮你记一个吗？", total: 0 });
           return NextResponse.json({ messages: [textMsg(msg)] });
         }
+        const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });
+        const overdue = pendingTodos.filter(t => t.dueDate && t.dueDate < today).length;
+        const overdueText = overdue > 0 ? ` ⚠️ ${overdue} 个已过期` : "";
+
         const msg = await reply("query_todos", {
-          _defaultText: `你有 ${todos.length} 个待办${pending > 0 ? `，其中 ${pending} 个待完成：` : "，全部已完成 🎉"}`,
-          total: todos.length, pending,
+          _defaultText: `你有 ${todos.length} 个待办${pending > 0 ? `，${pending} 个待完成${overdueText}` : "，全部已完成 🎉"}`,
+          total: todos.length, pending, overdue,
         });
+        // Sort: priority desc → dueDate asc
+        const sorted = [...pendingTodos].sort((a, b) =>
+          b.priority - a.priority ||
+          (a.dueDate || "9999") .localeCompare(b.dueDate || "9999")
+        );
         return NextResponse.json({
           messages: [
             textMsg(msg),
-            ...todos.filter(t => !t.completed).slice(0, 8).map(t => (
+            ...sorted.slice(0, 8).map(t => (
               { id: crypto.randomUUID(), role: "assistant" as const, type: "todo_card" as const, content: "", todo: t, timestamp: new Date().toISOString() }
             )),
           ],
@@ -210,6 +220,33 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ messages: [textMsg("你可以选择一个日期查看空闲时间，或者直接告诉我想安排什么，我帮你检查时段是否冲突。")] });
       }
 
+      // ── Evening Review ──
+      case "evening_review": {
+        const events = await getService().getEvents();
+        const todos = await getService().getAllTodos();
+        const habits = await getService().getAllHabits();
+        const msg = await reply("evening_review", {
+          _defaultText: "🌙 来看看今天的情况吧",
+          todayEvents: events.filter(e => e.startsAt.slice(0, 10) === new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" })).length,
+          pendingTodos: todos.filter(t => !t.completed).length,
+          doneTodos: todos.filter(t => t.completed).length,
+          checkedHabits: habits.filter(h => h.todayDone).length,
+        });
+        // Return overview-type message that ChatMessageList renders as EveningReview
+        return NextResponse.json({
+          messages: [textMsg(msg), {
+            id: crypto.randomUUID(),
+            role: "assistant" as const,
+            type: "overview" as const,
+            content: "",
+            events,
+            todos,
+            habits,
+            timestamp: new Date().toISOString(),
+          }],
+        });
+      }
+
       // ── Create Event ──
       case "create_event": {
         const result = await tryParseEvent(text);
@@ -226,14 +263,35 @@ export async function POST(request: NextRequest) {
         }
         if (result.draft) {
           const event: CalendarEvent = { ...result.draft, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+
+          // Conflict detection
+          const events = await getService().getEvents();
+          const conflict = events.find(e =>
+            e.id !== event.id &&
+            new Date(e.startsAt) < new Date(event.endsAt) &&
+            new Date(e.endsAt) > new Date(event.startsAt)
+          );
+          const conflictText = conflict ? ` ⚠️ 与「${conflict.title}」时间重叠（${new Date(conflict.startsAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}-${new Date(conflict.endsAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}）` : "";
+
+          // Find alternative slots
+          const dayDate = event.startsAt.slice(0, 10);
+          const slots = findFreeSlots(events, dayDate);
+          let alternatives = "";
+          if (conflict && !event.allDay && slots.length > 0) {
+            alternatives = `\n\n💡 可选空闲时段：${slots.slice(0, 3).join("、")}`;
+          }
+
           const msg = await reply("create_event", {
-            _defaultText: "已解析日程，确认后保存 👇",
+            _defaultText: `已解析日程${conflictText}，确认后保存 👇${alternatives}`,
             title: event.title,
             time: event.allDay ? "全天" : new Date(event.startsAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
+            hasConflict: !!conflict,
+            conflictTitle: conflict?.title,
+            alternatives: slots.join("、"),
           });
           return NextResponse.json({
             event, draft: result.draft,
-            messages: hasLLM ? [textMsg(msg)] : undefined,
+            messages: [textMsg(msg)],
           });
         }
         return NextResponse.json({ clarification: "我理解你想安排日程，能提供具体时间和内容吗？比如「明天下午三点开会」。", });
@@ -311,4 +369,24 @@ function getService() {
 
 function textMsg(content: string): ChatMessage {
   return { id: crypto.randomUUID(), role: "assistant", type: "text", content, timestamp: new Date().toISOString() };
+}
+
+function findFreeSlots(events: CalendarEvent[], date: string): string[] {
+  const occupied = events
+    .filter(e => e.startsAt.slice(0, 10) === date)
+    .map(e => [new Date(e.startsAt).getTime(), new Date(e.endsAt).getTime()] as const)
+    .sort((a, b) => a[0] - b[0]);
+  const slots: string[] = [];
+  let cursor = new Date(`${date}T09:00`).getTime();
+  const end = new Date(`${date}T18:00`).getTime();
+  for (const [a, b] of occupied) {
+    if (a - cursor >= 30 * 60_000) {
+      slots.push(`${new Date(cursor).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}-${new Date(a).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`);
+    }
+    cursor = Math.max(cursor, b);
+  }
+  if (end - cursor >= 30 * 60_000) {
+    slots.push(`${new Date(cursor).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}-18:00`);
+  }
+  return slots;
 }
