@@ -48,6 +48,8 @@ export default function Home() {
     sendMessage,
     confirmEvent,
     handleAction: chatHandleAction,
+    toggleTodo,
+    checkHabit,
     addMessage,
   } = useChat();
 
@@ -135,13 +137,13 @@ export default function Home() {
     setNotice("日程已删除。");
   }, [remove]);
 
-  const handleToggleTodo = useCallback((_id: string) => {
-    setNotice("待办功能即将上线。");
-  }, []);
+  const handleToggleTodo = useCallback((id: string) => {
+    toggleTodo(id);
+  }, [toggleTodo]);
 
-  const handleCheckHabit = useCallback((_id: string) => {
-    setNotice("习惯打卡功能即将上线。");
-  }, []);
+  const handleCheckHabit = useCallback((id: string) => {
+    checkHabit(id);
+  }, [checkHabit]);
 
   const handleAction = useCallback((intent: string) => {
     chatHandleAction(intent);

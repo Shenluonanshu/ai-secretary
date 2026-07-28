@@ -238,6 +238,37 @@ export function useChat() {
     localStorage.removeItem("chat_messages");
   }, []);
 
+  const toggleTodo = useCallback(async (id: string) => {
+    try {
+      const res = await authFetch("/api/todos", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ id }) });
+      if (res.ok) {
+        const updated = await res.json();
+        // Update the todo in messages
+        setMessages(prev => prev.map(m => {
+          if (m.type === "todo_card" && m.todo?.id === id) {
+            return { ...m, todo: updated };
+          }
+          return m;
+        }));
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const checkHabit = useCallback(async (id: string) => {
+    try {
+      const res = await authFetch("/api/habits/log", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ habitId: id }) });
+      if (res.ok) {
+        const data = await res.json();
+        addMessage({
+          id: crypto.randomUUID(),
+          role: "assistant", type: "text",
+          content: data.ok ? `已打卡！连续 ${data.streak} 天 🔥` : "今天已经打过卡了 ✅",
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch { /* ignore */ }
+  }, [addMessage]);
+
   return {
     messages,
     isProcessing,
@@ -246,5 +277,7 @@ export function useChat() {
     handleAction,
     clearMessages,
     addMessage,
+    toggleTodo,
+    checkHabit,
   };
 }

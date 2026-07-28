@@ -106,7 +106,7 @@ export interface HabitWithStreak extends Habit {
   weekProgress: string; // "3/5"
 }
 
-export type HabitDraft = Omit<Habit, "id" | "createdAt">;
+export type HabitDraft = Omit<Habit, "id" | "createdAt" | "archived">;
 
 export interface HabitLog {
   id: string;

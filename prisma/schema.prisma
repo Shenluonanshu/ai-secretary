@@ -32,3 +32,82 @@ model PushSubscription {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model Todo {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  completed   Boolean  @default(false)
+  priority    Int      @default(0)
+  dueDate     String?
+  listName    String   @default("默认")
+  tags        String   @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([completed])
+  @@index([dueDate])
+}
+
+model Note {
+  id        String   @id @default(uuid())
+  title     String
+  content   String   @default("")
+  tags      String   @default("[]")
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([pinned])
+}
+
+model Habit {
+  id          String   @id @default(uuid())
+  name        String
+  icon        String   @default("✅")
+  frequency   String   @default("daily")
+  targetCount Int      @default(1)
+  color       String   @default("#4a5be7")
+  archived    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  habitLogs   HabitLog[]
+
+  @@index([archived])
+}
+
+model HabitLog {
+  id        String   @id @default(uuid())
+  habitId   String
+  date      String
+  count     Int      @default(1)
+  note      String?
+  createdAt DateTime @default(now())
+  habit     Habit    @relation(fields: [habitId], references: [id])
+
+  @@unique([habitId, date])
+  @@index([habitId])
+  @@index([date])
+}
+
+model UserSettings {
+  id                     String   @id @default("default")
+  theme                  String   @default("system")
+  timezone               String   @default("Asia/Shanghai")
+  morningBriefingTime    String   @default("08:00")
+  defaultReminderMinutes String   @default("[30]")
+  workingHoursStart      String   @default("09:00")
+  workingHoursEnd        String   @default("18:00")
+  weekStartDay           Int      @default(1)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+model Feedback {
+  id        String   @id @default(uuid())
+  rating    Int      @default(0)
+  message   String?
+  category  String   @default("other")
+  userAgent String?
+  createdAt DateTime @default(now())
+  resolved  Boolean  @default(false)
+}

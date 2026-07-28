@@ -59,4 +59,4 @@ export function parseChineseEvent(text:string, now=new Date(), source:EventDraft
 }
 const recurrence=(s:string):EventDraft["recurrence"]=>/每天/.test(s)?"daily":/每周/.test(s)?"weekly":/每月/.test(s)?"monthly":"none";
 const chineseNumber=(s:string)=>{if(/^\d+$/.test(s))return +s;const map:Record<string,number>={"零":0,"一":1,"二":2,"两":2,"三":3,"四":4,"五":5,"六":6,"七":7,"八":8,"九":9};if(s==="十")return 10;if(s.includes("十")){const [a,b]=s.split("十");return (a?map[a]:1)*10+(b?map[b]:0)}return map[s]??9};
-const cleanTitle=(s:string)=>s.replace(/今天|明天|后天|下周[日天一二三四五六]|\d{1,2}月\d{1,2}[日号]?|上午|早上|下午|晚上|中午|全天|[\d一二三四五六七八九十两]{1,3}(?:点|:|：)(?:\d{1,2}分?)?|提醒我|帮我|安排|创建/g," ").replace(/\s+/g," ").trim()||"未命名事件";
+const cleanTitle=(s:string)=>s.replace(/今晚|今早|今中午|今下午|今上午|明早|明晚|后天晚[上间]?|后天早[上间]?|今天|明天|后天|下周[日天一二三四五六]|\d{1,2}月\d{1,2}[日号]?|上午|早上|下午|晚上|中午|全天|[\d一二三四五六七八九十两]{1,3}(?:点|:|：)(?:\d{1,2}分?)?|提醒我|帮我|安排|创建|出去/g," ").replace(/\s+/g," ").trim()||"未命名事件";
