@@ -1,10 +1,15 @@
-# 知行 AI 秘书 — Cloudflare Pages 配置
 name = "ai-secretary"
 compatibility_date = "2024-11-01"
-pages_build_output_dir = ".vercel/output/static"
+pages_build_output_dir = "deploy-out"
 
-# D1 数据库（部署前需先创建：npx wrangler d1 create ai-secretary-db）
+# D1 Database
 [[d1_databases]]
 binding = "DB"
 database_name = "ai-secretary-db"
 database_id = "be74e636-2bbc-4acd-92dd-ab62e059e708"
+
+# Environment variables
+[vars]
+AUTH_PASSPHRASE = "admin"
+JWT_SECRET = "ai-secretary-2024"
+LLM_PROVIDER = "rule-based"

@@ -1,0 +1,2 @@
+- [自定义域名 DNS 配置与 Cloudflare Pages 绑定进展](domain-dns-setup.md) — 域名 nanshu.secretary.top NS 变更等待 .top 注册局生效中
+- [项目升级进度追踪](project-progress.md) — 阶段一（对话式 UI 重构）已完成，五个阶段待开始

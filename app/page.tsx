@@ -1,38 +1,18 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
-import type { CalendarEvent, EventDraft, TripItem } from "@/lib/types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CalendarEvent, EventDraft } from "@/lib/types";
 import { useEvents } from "@/hooks/useEvents";
 import { useNotifications } from "@/hooks/useNotifications";
-import { useFreeSlots } from "@/hooks/useFreeSlots";
-import { authFetch } from "@/lib/api";
+import { useChat } from "@/hooks/useChat";
 import { useSpeech } from "@/lib/speech/SpeechContext";
-import { Sidebar } from "@/components/Sidebar";
-import { Header } from "@/components/Header";
-import { MetricsPanel } from "@/components/MetricsPanel";
-import { AIAssistant } from "@/components/AIAssistant";
-import { EventForm } from "@/components/EventForm";
-import { EventList } from "@/components/EventList";
-import { FreeSlotsPanel } from "@/components/FreeSlotsPanel";
-import { TripPlanner } from "@/components/TripPlanner";
+import { authFetch } from "@/lib/api";
+import { ChatHeader } from "@/components/ChatHeader";
+import { ChatMessageList } from "@/components/ChatMessageList";
+import { ChatInput } from "@/components/ChatInput";
+import { Drawer } from "@/components/Drawer";
 import { Toast } from "@/components/Toast";
 import { PushManager } from "@/components/PushManager";
-import { BottomNav } from "@/components/BottomNav";
 import { InstallPrompt } from "@/components/InstallPrompt";
-
-const blank = (): EventDraft => ({
-  title: "",
-  description: "",
-  startsAt: "",
-  endsAt: "",
-  allDay: false,
-  timezone: "Asia/Shanghai",
-  reminders: [30],
-  recurrence: "none",
-  source: "manual",
-});
-
-const localDate = (d = new Date()) =>
-  d.toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });
 
 const fmt = (s: string, allDay = false) =>
   new Intl.DateTimeFormat("zh-CN", {
@@ -43,60 +23,46 @@ const fmt = (s: string, allDay = false) =>
     minute: allDay ? undefined : "2-digit",
   }).format(new Date(s));
 
-const dayKey = (s: string) => s.slice(0, 10);
-
 export default function Home() {
+  // ── Event management (kept for notifications + persistence) ──
   const {
     events,
     draft,
     editing,
     prompt,
-    candidate,
     setPrompt,
     setEditing,
     setDraft,
-    setCandidate,
     load,
     update,
     persist,
-    parse,
     remove,
-    edit,
-    exportData,
   } = useEvents();
 
   useNotifications(events);
 
+  // ── Chat state ──
+  const {
+    messages,
+    isProcessing,
+    sendMessage,
+    confirmEvent,
+    handleAction: chatHandleAction,
+    addMessage,
+  } = useChat();
+
+  // ── Speech ──
   const {
     isListening,
-    lastResult,
     error: speechError,
     startListening,
     stopListening,
     supported: speechSupported,
   } = useSpeech();
 
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"today" | "week" | "all">("week");
-  const [selectedDate, setSelectedDate] = useState(localDate());
+  // ── UI state ──
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [notice, setNotice] = useState("");
-  const [trip, setTrip] = useState({
-    destination: "",
-    startDate: "",
-    endDate: "",
-    preference: "",
-  });
-  const [plan, setPlan] = useState<TripItem[]>([]);
-  const [summary, setSummary] = useState("");
-
-  const freeSlots = useFreeSlots(events, selectedDate);
-
-  // Service worker registration
-  useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
-    }
-  }, []);
 
   // Auto-dismiss notice
   useEffect(() => {
@@ -105,207 +71,152 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [notice]);
 
-  // Handle speech results
+  // Speech error → notice
   useEffect(() => {
     if (speechError) setNotice(speechError);
   }, [speechError]);
 
-  useEffect(() => {
-    if (lastResult?.text) {
-      setPrompt(lastResult.text);
-      if (lastResult.isFinal) {
-        parse("voice", lastResult.text);
-      }
+  // Load events on mount
+  useEffect(() => { load(); }, [load]);
+
+  // ── Handlers ──
+
+  const handleSend = useCallback(async () => {
+    const text = prompt.trim();
+    if (!text || isProcessing) return;
+    setPrompt("");
+    await sendMessage(text);
+    load(); // Refresh events after chat interaction
+  }, [prompt, isProcessing, sendMessage, setPrompt, load]);
+
+  const handleConfirmEvent = useCallback(async (id: string) => {
+    // Find the event data from the pending message
+    const eventMsg = messages.find((m: { id: string; event?: CalendarEvent }) => m.id === id || m.event?.id === id);
+    if (eventMsg?.event) {
+      const msg = await persist({
+        title: eventMsg.event.title,
+        description: eventMsg.event.description,
+        startsAt: eventMsg.event.startsAt,
+        endsAt: eventMsg.event.endsAt,
+        allDay: eventMsg.event.allDay,
+        timezone: eventMsg.event.timezone,
+        reminders: eventMsg.event.reminders,
+        recurrence: eventMsg.event.recurrence,
+        source: eventMsg.event.source,
+      }, null);
+      if (msg) setNotice(msg);
+      await confirmEvent(id);
+    } else {
+      await confirmEvent(id);
     }
-  }, [lastResult, parse, setPrompt]);
+  }, [messages, persist, confirmEvent]);
 
-  // Filtered visible events
-  const now = new Date();
-  const today = localDate();
-  const weekEnd = new Date(now);
-  weekEnd.setDate(now.getDate() + 7);
+  const handleEditEvent = useCallback((id: string) => {
+    const ev = events.find((e: CalendarEvent) => e.id === id);
+    if (ev) {
+      setEditing(ev.id);
+      setDraft({
+        title: ev.title,
+        description: ev.description,
+        startsAt: ev.startsAt,
+        endsAt: ev.endsAt,
+        allDay: ev.allDay,
+        timezone: ev.timezone,
+        reminders: ev.reminders,
+        recurrence: ev.recurrence,
+        source: ev.source,
+      });
+      setNotice("已加载到编辑区，修改后点击保存。");
+    }
+  }, [events, setEditing, setDraft]);
 
-  const visible = useMemo(
-    () =>
-      events.filter((e) => {
-        const starts = new Date(e.startsAt);
-        const match =
-          !query ||
-          `${e.title} ${e.description || ""}`
-            .toLowerCase()
-            .includes(query.toLowerCase());
-        return (
-          match &&
-          (filter === "all"
-            ? true
-            : filter === "today"
-              ? dayKey(e.startsAt) === today
-              : starts >= now && starts < weekEnd)
-        );
-      }),
-    [events, filter, query, today],
-  );
-
-  async function handleParse(source: "text" | "voice", text?: string) {
-    const result = await parse(source, text);
-    if (result?.clarification) setNotice(result.clarification);
-  }
-
-  async function handleConfirmCandidate() {
-    const msg = await persist(candidate ?? undefined, null);
-    if (msg) setNotice(msg);
-  }
-
-  async function handlePersist() {
-    const msg = await persist();
-    if (msg) setNotice(msg);
-  }
-
-  async function handleRemove(id: string) {
+  const handleDeleteEvent = useCallback(async (id: string) => {
     await remove(id);
-    setNotice("事件已删除，关联提醒已取消。");
-  }
+    setNotice("日程已删除。");
+  }, [remove]);
 
-  function handleEdit(e: CalendarEvent) {
-    edit(e);
-  }
+  const handleToggleTodo = useCallback((_id: string) => {
+    setNotice("待办功能即将上线。");
+  }, []);
 
-  function handleCancelEdit() {
-    setEditing(null);
-    setDraft(blank());
-  }
+  const handleCheckHabit = useCallback((_id: string) => {
+    setNotice("习惯打卡功能即将上线。");
+  }, []);
 
-  function handleRequestPermission() {
-    window.Notification?.requestPermission().then((p) =>
-      setNotice(p === "granted" ? "通知已开启。" : "浏览器未授予通知权限。"),
-    );
-  }
+  const handleAction = useCallback((intent: string) => {
+    chatHandleAction(intent);
+  }, [chatHandleAction]);
 
-  function handleSlotClick(startsAt: string, endsAt: string) {
-    setDraft({ ...blank(), title: "专注时间", startsAt, endsAt });
-    setEditing(null);
-  }
-
-  function handleToggleVoice() {
+  const handleVoiceToggle = useCallback(async () => {
     if (isListening) {
       stopListening();
+      // The speech result will be processed in the speech context
+      if (prompt.trim()) {
+        await sendMessage(prompt);
+        setPrompt("");
+      }
     } else {
       if (!speechSupported) {
-        setNotice("当前浏览器不支持语音识别，请使用新版 Edge 或 Chrome。");
+        setNotice("当前浏览器不支持语音识别，请使用 Chrome 或 Edge。");
         return;
       }
-      startListening().catch(() => setNotice("语音识别无法启动，请稍后重试。"));
-      setNotice("正在聆听，请直接说出你的日程。");
+      try {
+        await startListening();
+        setNotice("正在聆听…");
+      } catch {
+        setNotice("语音识别无法启动。");
+      }
     }
-  }
+  }, [isListening, speechSupported, startListening, stopListening, prompt, sendMessage, setPrompt]);
 
-  // Trip planner
-  async function makePlan() {
-    const response = await authFetch("/api/trip", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(trip),
-    });
-    const data = await response.json();
-    if (!response.ok) return setNotice(data.error);
-    setPlan(data.items);
-    setSummary(data.summary);
-  }
-
-  async function importPlan() {
-    for (const item of plan.filter((p) => p.selected)) {
-      await persist(
-        {
-          title: item.title,
-          startsAt: item.startsAt,
-          endsAt: item.endsAt,
-          allDay: false,
-          timezone: "Asia/Shanghai",
-          reminders: [60],
-          recurrence: "none",
-          source: "trip",
-        },
-        null,
-      );
-    }
-    setPlan([]);
-    setSummary("");
-  }
+  const handleExport = useCallback(() => {
+    const blob = new Blob([JSON.stringify(events, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ai-secretary-${new Date().toLocaleDateString("en-CA")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setNotice("数据已导出。");
+  }, [events]);
 
   return (
-    <main className="app">
-      <Sidebar />
-      <section className="content">
-        <Header
-          onExport={exportData}
-          onRequestPermission={handleRequestPermission}
-        />
-        <MetricsPanel events={events} freeSlots={freeSlots} />
-        <div className="workspace">
-          <section className="main-column">
-            <AIAssistant
-              prompt={prompt}
-              onPromptChange={setPrompt}
-              onParse={handleParse}
-              candidate={candidate}
-              onCancelCandidate={() => setCandidate(null)}
-              onConfirmCandidate={handleConfirmCandidate}
-              listening={isListening}
-              onToggleVoice={handleToggleVoice}
-              fmtDate={fmt}
-            />
-            <EventForm
-              draft={draft}
-              editing={editing}
-              onUpdate={update}
-              onPersist={handlePersist}
-              onCancelEdit={handleCancelEdit}
-            />
-            <EventList
-              events={visible}
-              query={query}
-              filter={filter}
-              onQueryChange={setQuery}
-              onFilterChange={setFilter}
-              onEdit={handleEdit}
-              onRemove={handleRemove}
-              fmtDate={fmt}
-            />
-          </section>
-          <aside className="right-column">
-            <FreeSlotsPanel
-              selectedDate={selectedDate}
-              onDateChange={setSelectedDate}
-              freeSlots={freeSlots}
-              onSlotClick={handleSlotClick}
-            />
-            <TripPlanner
-              destination={trip.destination}
-              startDate={trip.startDate}
-              endDate={trip.endDate}
-              preference={trip.preference}
-              onDestinationChange={(v) => setTrip({ ...trip, destination: v })}
-              onStartDateChange={(v) => setTrip({ ...trip, startDate: v })}
-              onEndDateChange={(v) => setTrip({ ...trip, endDate: v })}
-              onPreferenceChange={(v) => setTrip({ ...trip, preference: v })}
-              onGenerate={makePlan}
-              summary={summary}
-              plan={plan}
-              onToggleItem={(i) =>
-                setPlan((list) =>
-                  list.map((p, n) => (n === i ? { ...p, selected: !p.selected } : p)),
-                )
-              }
-              onImport={importPlan}
-              fmtDate={fmt}
-            />
-          </aside>
-        </div>
-      </section>
+    <div className="chat-shell">
+      <ChatHeader
+        onMenuToggle={() => setDrawerOpen(true)}
+        onMoreToggle={handleExport}
+      />
+
+      <ChatMessageList
+        messages={messages}
+        isProcessing={isProcessing}
+        onConfirmEvent={handleConfirmEvent}
+        onEditEvent={handleEditEvent}
+        onDeleteEvent={handleDeleteEvent}
+        onToggleTodo={handleToggleTodo}
+        onCheckHabit={handleCheckHabit}
+        onAction={handleAction}
+        fmtDate={fmt}
+      />
+
+      <ChatInput
+        value={prompt}
+        onChange={setPrompt}
+        onSend={handleSend}
+        onVoiceToggle={handleVoiceToggle}
+        isListening={isListening}
+        isProcessing={isProcessing}
+      />
+
+      <Drawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        currentPage="chat"
+      />
+
       <Toast message={notice} />
       <PushManager />
-      <BottomNav />
       <InstallPrompt />
-    </main>
+    </div>
   );
 }
