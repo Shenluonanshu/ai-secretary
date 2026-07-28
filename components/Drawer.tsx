@@ -6,9 +6,10 @@ interface DrawerProps {
   open: boolean;
   onClose: () => void;
   currentPage: string;
+  onExport?: () => void;
 }
 
-export function Drawer({ open, onClose, currentPage }: DrawerProps) {
+export function Drawer({ open, onClose, currentPage, onExport }: DrawerProps) {
   const router = useRouter();
 
   function navigate(href: string) {
@@ -60,6 +61,11 @@ export function Drawer({ open, onClose, currentPage }: DrawerProps) {
           >
             <span className="nav-icon">🔒</span> 隐私政策
           </button>
+          {onExport && (
+            <button onClick={onExport}>
+              <span className="nav-icon">📥</span> 导出数据
+            </button>
+          )}
         </nav>
 
         <div className="drawer-footer">

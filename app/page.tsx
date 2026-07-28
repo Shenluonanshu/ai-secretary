@@ -245,7 +245,7 @@ export default function Home() {
     <div className="chat-shell">
       <ChatHeader
         onMenuToggle={() => setDrawerOpen(true)}
-        onMoreToggle={handleExport}
+        onExport={handleExport}
         title={greeting}
       />
 
@@ -274,6 +274,7 @@ export default function Home() {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         currentPage="chat"
+        onExport={handleExport}
       />
 
       <Toast message={notice} />
