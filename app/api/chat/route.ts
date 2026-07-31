@@ -6,6 +6,7 @@ import type { LLMProvider, ParseResult } from "@/lib/llm/types";
 import { onCloudflare } from "@/lib/cf";
 import { classifyIntent, isEventIntent } from "@/lib/intent-classifier";
 import { generateResponse, generateChatResponse } from "@/lib/conversation";
+import { parseChineseEvent } from "@/lib/date-parser";
 import { getNextHolidayCountdown, getUpcomingHolidays, detectHolidayMention, getHolidayName, getDayType } from "@/lib/holidays";
 import type { CalendarEvent, EventDraft, ChatMessage, BriefingData, HabitWithStreak } from "@/lib/types";
 
@@ -360,25 +361,18 @@ export async function POST(request: NextRequest) {
 // ── Helpers ──
 
 async function tryParseEvent(text: string): Promise<{ draft?: EventDraft; clarification?: string }> {
+  // 优先使用规则引擎（快速、可靠、纯本地运算）
+  const ruleResult = parseChineseEvent(text, new Date(), "text");
+  if (ruleResult.draft) return { draft: ruleResult.draft };
+
+  // 规则引擎失败 → 尝试 LLM
   const apiKey = process.env.OPENAI_API_KEY || "";
   if (!apiKey || apiKey === "sk-your-key-here") {
-    // fallback to rule-based provider
-    const result = await provider.parseNaturalLanguage(text, new Date(), "text");
-    return { draft: result.draft, clarification: result.clarification };
+    return { clarification: ruleResult.clarification || "无法解析该日程，请提供更明确的时间和内容。" };
   }
 
   const baseURL = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
   const model = process.env.LLM_MODEL || "gpt-4o-mini";
-
-  // 使用和 generateResponse 完全相同的 fetch 模式
-  const systemPrompt = `你是日历事件解析器。将用户中文输入转JSON。
-
-当前日期：${new Date().toLocaleDateString("zh-CN", {year:"numeric",month:"long",day:"numeric",weekday:"long"})}
-当前时间：${new Date().toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}
-
-输出格式：{"title":"事件名","startsAt":"2026-08-01T15:00:00+08:00","endsAt":"2026-08-01T16:00:00+08:00","allDay":false,"reminders":[30],"recurrence":"none"}
-
-规则：上午6-12点 下午12-18点 晚上18-22点。未指定默认9:00。明天=+1天。中文数字自动转换。只输出JSON。`;
 
   try {
     const response = await fetch(`${baseURL}/chat/completions`, {
@@ -387,7 +381,7 @@ async function tryParseEvent(text: string): Promise<{ draft?: EventDraft; clarif
       body: JSON.stringify({
         model,
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: `你是日历事件解析器。当前日期：${new Date().toLocaleDateString("zh-CN",{year:"numeric",month:"long",day:"numeric",weekday:"long"})}。将用户的日程文本转为JSON：{"title":"事件名","startsAt":"ISO时间+08:00","endsAt":"ISO时间+08:00","allDay":false,"reminders":[30],"recurrence":"none"}。只输出JSON。` },
           { role: "user", content: text },
         ],
         temperature: 0.1,
@@ -396,33 +390,23 @@ async function tryParseEvent(text: string): Promise<{ draft?: EventDraft; clarif
     });
 
     if (!response.ok) {
-      const result = await provider.parseNaturalLanguage(text, new Date(), "text");
-      return { draft: result.draft, clarification: result.clarification };
+      return { clarification: ruleResult.clarification || "日程解析服务暂时不可用。" };
     }
 
     const data = await response.json() as { choices?: { message?: { content?: string } }[] };
     const content = data.choices?.[0]?.message?.content;
     if (!content) {
-      return { clarification: "AI 未返回结果，请重试。" };
+      return { clarification: ruleResult.clarification || "未能解析日程。" };
     }
 
-    // 提取 JSON
-    let jsonStr = content.trim();
-    const m = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (m) jsonStr = m[1].trim();
-
-    const parsed = JSON.parse(jsonStr) as {
+    const parsed = JSON.parse(content.trim()) as {
       title?: string; startsAt?: string; endsAt?: string;
       allDay?: boolean; reminders?: number[]; recurrence?: string;
-      clarification?: string; description?: string;
+      description?: string;
     };
 
-    if (parsed.clarification) {
-      return { clarification: parsed.clarification };
-    }
-
     if (!parsed.title || !parsed.startsAt) {
-      return { clarification: "未能解析出事件标题和时间，请重新描述。" };
+      return { clarification: ruleResult.clarification || "AI 未能提取事件信息，请重新描述。" };
     }
 
     return {
@@ -439,9 +423,8 @@ async function tryParseEvent(text: string): Promise<{ draft?: EventDraft; clarif
       },
     };
   } catch (err) {
-    console.error("tryParseEvent error:", err);
-    const result = await provider.parseNaturalLanguage(text, new Date(), "text");
-    return { draft: result.draft, clarification: result.clarification };
+    console.error("LLM parse error:", err);
+    return { clarification: ruleResult.clarification || "日程解析失败，请重试。" };
   }
 }
 
