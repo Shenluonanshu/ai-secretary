@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { NextRequest, NextResponse } from "next/server";
 import { createProvider } from "@/lib/llm/factory";
 import type { LLMProvider, ParseResult } from "@/lib/llm/types";
