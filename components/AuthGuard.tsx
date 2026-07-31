@@ -20,6 +20,18 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, router]);
 
-  if (!ready) return null;
+  if (!ready) {
+    return (
+      <div className="skeleton-screen">
+        <div className="skeleton-header" />
+        <div className="skeleton-body">
+          <div className="skeleton-bubble skeleton-bubble-user" />
+          <div className="skeleton-bubble skeleton-bubble-ai" />
+          <div className="skeleton-bubble skeleton-bubble-ai skeleton-bubble-short" />
+        </div>
+        <div className="skeleton-input-bar" />
+      </div>
+    );
+  }
   return <>{children}</>;
 }

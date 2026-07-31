@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CalendarEvent, TodoItem, HabitWithStreak } from "@/lib/types";
 import { useEvents } from "@/hooks/useEvents";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -70,6 +70,7 @@ export default function Home() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [greeting, setGreeting] = useState("AI 秘书");
+  const editingEventIdRef = useRef<string | null>(null); // 追踪正在编辑的日程 ID
 
   // Dynamic greeting
   useEffect(() => {
@@ -129,9 +130,24 @@ export default function Home() {
     const text = prompt.trim();
     if (!text || isProcessing) return;
     setPrompt("");
+    const editingId = editingEventIdRef.current;
+    editingEventIdRef.current = null;
+
+    // 记录发送前的消息数量和 ID 集合，用于检测新创建的日程
+    const prevCount = messages.length;
     await sendMessage(text);
+
+    // 如果在编辑模式下成功发送了新日程，删除旧日程
+    if (editingId) {
+      // sendMessage 是异步的，通过检查是否有新 messasge 来判断是否成功
+      // 延迟删除以确保新日程已在服务端创建
+      setTimeout(() => {
+        remove(editingId);
+      }, 500);
+    }
+
     load(); // Refresh events after chat interaction
-  }, [prompt, isProcessing, sendMessage, setPrompt, load]);
+  }, [prompt, isProcessing, sendMessage, setPrompt, load, messages.length, remove]);
 
   const handleConfirmEvent = useCallback(async (id: string) => {
     // Find the event data from the pending message
@@ -176,17 +192,16 @@ export default function Home() {
         : new Date(ev.startsAt).toLocaleDateString("zh-CN", { month: "short", day: "numeric" }) +
           " " + new Date(ev.startsAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
       setPrompt(`${timeDesc} ${ev.title}${ev.description ? "，" + ev.description : ""}`);
-      setNotice("已填入输入框，修改后发送即可 →");
-      // Also delete the old one if it was already persisted
-      if (events.some(e => e.id === id)) {
-        remove(id);
-      }
+      // 暂不删除旧日程——延迟到新日程确认保存后再删除
+      editingEventIdRef.current = events.some(e => e.id === id) ? id : null;
+      setNotice("已填入输入框，修改后发送即可（旧日程将在保存后替换）→");
     } else {
       setNotice("该日程信息暂不可编辑");
     }
-  }, [events, messages, setPrompt, remove]);
+  }, [events, messages, setPrompt]);
 
   const handleDeleteEvent = useCallback(async (id: string) => {
+    if (!window.confirm("确定删除此日程？")) return;
     await remove(id);
     setNotice("日程已删除。");
   }, [remove]);

@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CalendarEvent } from "@/lib/types";
 import { useEvents } from "@/hooks/useEvents";
@@ -30,21 +30,33 @@ export default function CalendarPage() {
 
   const dayKey = (s: string) => s.slice(0, 10);
 
+  // 预先按日期分组事件，避免每个格子都做 O(n) 过滤
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>();
+    for (const e of events) {
+      const key = dayKey(e.startsAt);
+      const arr = map.get(key);
+      if (arr) arr.push(e); else map.set(key, [e]);
+    }
+    return map;
+  }, [events]);
+
   const grid = [];
   for (let i = 0; i < firstDay; i++) grid.push(null);
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    const dayEvents = events.filter(e => dayKey(e.startsAt) === dateStr);
+    const dayEvents = eventsByDate.get(dateStr) || [];
     grid.push({ day: d, dateStr, events: dayEvents });
   }
   // Pad to complete rows
   while (grid.length % 7 !== 0) grid.push(null);
 
   const selectedEvents = selectedDate
-    ? events.filter(e => dayKey(e.startsAt) === selectedDate)
+    ? eventsByDate.get(selectedDate) || []
     : [];
 
   const handleDelete = useCallback(async (id: string) => {
+    if (!window.confirm("确定删除此日程？")) return;
     await authFetch(`/api/events?id=${id}`, { method: "DELETE" });
     setNotice("已删除");
     load();
@@ -132,7 +144,10 @@ export default function CalendarPage() {
             {new Date(selectedDate + "T00:00").toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" })}
           </div>
           {selectedEvents.length === 0 ? (
-            <div style={{ color: "var(--muted)", fontSize: 13, padding: "8px 0" }}>当天没有日程</div>
+            <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 0", textAlign: "center" }}>
+              <div style={{ marginBottom: 6 }}>当天没有日程</div>
+              <a href="/" style={{ color: "var(--blue)", fontSize: 12 }}>← 返回对话，用自然语言创建日程</a>
+            </div>
           ) : (
             selectedEvents.map(ev => (
               <div key={ev.id} className="event-row" style={{

@@ -1,20 +1,17 @@
-"use client";
-import { useRouter } from "next/navigation";
+export const dynamic = "force-static";
 
 export default function TermsPage() {
-  const router = useRouter();
-
   return (
     <div className="page-shell">
       <div className="page-head">
-        <button className="back-btn" onClick={() => router.push("/")} aria-label="返回">
+        <a className="back-btn" href="/" aria-label="返回">
           ←
-        </button>
+        </a>
         <h1>用户协议</h1>
       </div>
 
       <div style={{ fontSize: 14, lineHeight: 1.8, color: "var(--ink-soft)" }}>
-        <p><strong>最后更新：2026年7月28日</strong></p>
+        <p><strong>最后更新：2026年7月31日</strong></p>
 
         <h3 style={{ marginTop: 20, color: "var(--ink)" }}>1. 服务说明</h3>
         <p>
@@ -30,7 +27,7 @@ export default function TermsPage() {
 
         <h3 style={{ marginTop: 16, color: "var(--ink)" }}>3. AI 服务说明</h3>
         <p>
-          AI 解析功能可能由第三方 AI 服务商提供（如 DeepSeek、OpenAI 等）。
+          AI 解析功能可能由第三方 AI 服务商提供（如 DeepSeek 等）。
           使用 AI 功能即表示您同意将相关文本发送至对应的 AI 服务商进行处理。
         </p>
 

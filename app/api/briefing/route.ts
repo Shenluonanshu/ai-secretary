@@ -6,7 +6,9 @@ import { onCloudflare } from "@/lib/cf";
 export async function GET() {
   if (onCloudflare()) {
     const { generateBriefing } = await import("@/lib/life-d1");
-    return NextResponse.json(await generateBriefing());
+    return NextResponse.json(await generateBriefing(), {
+      headers: { "Cache-Control": "public, max-age=120, stale-while-revalidate=600" },
+    });
   }
   const { generateBriefing } = await import("@/lib/life-service");
   return NextResponse.json(await generateBriefing());

@@ -1,17 +1,37 @@
 // Edge-compatible JWT using Web Crypto API
-const getSecretKey = async () => {
-  const secret = process.env.JWT_SECRET || process.env.AUTH_PASSPHRASE || "ai-secretary-default";
+// 安全性：JWT_SECRET 和 AUTH_PASSPHRASE 不再有硬编码默认值。
+// 部署时必须通过环境变量设置，否则启动时抛出错误。
+let _secretKey: CryptoKey | null = null;
+
+async function getSecretKey(): Promise<CryptoKey> {
+  if (_secretKey) return _secretKey;
+  const secret = process.env.JWT_SECRET || process.env.AUTH_PASSPHRASE;
+  if (!secret) {
+    throw new Error(
+      "[auth] 致命错误：未设置 JWT_SECRET 或 AUTH_PASSPHRASE 环境变量。" +
+      "请在 Cloudflare Dashboard → Settings → Environment Variables 中配置。"
+    );
+  }
   const keyData = new TextEncoder().encode(secret);
-  return crypto.subtle.importKey(
+  _secretKey = await crypto.subtle.importKey(
     "raw",
     keyData.buffer as ArrayBuffer,
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign", "verify"],
   );
-};
+  return _secretKey;
+}
 
-const AUTH_PASSPHRASE = process.env.AUTH_PASSPHRASE || "admin";
+function getAuthPassphrase(): string {
+  const pass = process.env.AUTH_PASSPHRASE;
+  if (!pass) {
+    throw new Error(
+      "[auth] 致命错误：未设置 AUTH_PASSPHRASE 环境变量。"
+    );
+  }
+  return pass;
+}
 
 function base64urlEncode(buffer: Uint8Array): string {
   return btoa(String.fromCharCode(...buffer))
@@ -57,7 +77,7 @@ async function verify(token: string, key: CryptoKey): Promise<Record<string, unk
 }
 
 export async function createToken(passphrase: string): Promise<string | null> {
-  if (passphrase !== AUTH_PASSPHRASE) return null;
+  if (passphrase !== getAuthPassphrase()) return null;
   const key = await getSecretKey();
   const now = Math.floor(Date.now() / 1000);
   return sign({ sub: "user", iat: now, exp: now + 30 * 24 * 60 * 60 }, key);
