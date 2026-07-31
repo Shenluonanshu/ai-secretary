@@ -29,7 +29,7 @@ export class OpenAIProvider implements LLMProvider {
           { role: "system", content: buildSystemPrompt(now) },
           { role: "user", content: buildUserPrompt(text) },
         ],
-        response_format: { type: "json_object" },
+        // DeepSeek 不支持 response_format: json_object，改用 prompt 指令强制 JSON
         temperature: 0.1,
         max_tokens: 500,
       });
