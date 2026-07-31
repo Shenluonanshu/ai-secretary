@@ -1,5 +1,5 @@
 // ── AI 秘书人格 & 对话生成 ──
-// 当有 LLM 可用时生成自然语言回复，否则降级到模板
+// 支持三级降级：用户自定义 Key → Cloudflare Workers AI → 模板
 
 const SYSTEM_PROMPT = `你是知行 AI 秘书，一个温暖、干练的个人助理。你叫"知行"。
 
@@ -35,28 +35,72 @@ const SYSTEM_PROMPT = `你是知行 AI 秘书，一个温暖、干练的个人�
 → 晚安 🌙 明天有个产品评审会，记得早点休息。
 
 用户说"今天跑步打卡"
-→ 🎉 跑步打卡成功！连续第 5 天了，继续保持！
+→ 🎉 跑步打卡成功！连续第 5 天了，继续保持！`;
 
-用户说"查看待办"
-→ 还有 2 件事没完成：买礼品和回复邮件。先搞定哪个？`;
+export interface UserLLMConfig {
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+}
 
 /**
- * 生成对话回复（LLM 可用时）或模板回复（无 LLM 时降级）
+ * 生成对话回复。优先级：用户 Key → CF Workers AI → null(降级到模板)
  */
 export async function generateResponse(
   userText: string,
-  context: {
-    intent: string;
-    result: string; // JSON: the raw API result summary
-    time?: string;
-  },
+  context: { intent: string; result: string; time?: string },
+  userLLM?: UserLLMConfig,
 ): Promise<string | null> {
-  const apiKey = process.env.OPENAI_API_KEY || "";
-  if (!apiKey || apiKey === "sk-your-key-here") return null;
+  // Level 1: 用户自定义 Key
+  if (userLLM?.apiKey && userLLM.apiKey !== "sk-your-key-here") {
+    const result = await tryLLM(userText, context, {
+      apiKey: userLLM.apiKey,
+      baseUrl: userLLM.baseUrl || "https://api.deepseek.com/v1",
+      model: userLLM.model || "deepseek-chat",
+    });
+    if (result) return result;
+  }
 
-  const baseURL = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
-  const model = process.env.LLM_MODEL || "gpt-4o-mini";
+  // Level 2: 环境变量配置的 Key
+  const envKey = process.env.OPENAI_API_KEY || "";
+  if (envKey && envKey !== "sk-your-key-here") {
+    const result = await tryLLM(userText, context, {
+      apiKey: envKey,
+      baseUrl: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+      model: process.env.LLM_MODEL || "gpt-4o-mini",
+    });
+    if (result) return result;
+  }
 
+  // Level 3: Cloudflare Workers AI
+  try {
+    const cfResult = await tryCFAI(userText, context);
+    if (cfResult) return cfResult;
+  } catch { /* CF AI not available */ }
+
+  return null; // 降级到模板
+}
+
+/**
+ * 纯闲聊回复
+ */
+export async function generateChatResponse(
+  userText: string,
+  userLLM?: UserLLMConfig,
+): Promise<string | null> {
+  return generateResponse(userText, {
+    intent: "general_chat",
+    result: "用户没有明确指令，只是一般闲聊或简单问候",
+  }, userLLM);
+}
+
+// ── 内部实现 ──
+
+async function tryLLM(
+  userText: string,
+  context: { intent: string; result: string; time?: string },
+  config: { apiKey: string; baseUrl: string; model: string },
+): Promise<string | null> {
   const userPrompt = `用户说：${userText}
 用户意图：${context.intent}
 处理结果：${context.result}
@@ -65,11 +109,11 @@ export async function generateResponse(
 请用自然的口吻给用户一个简短回复。`;
 
   try {
-    const response = await fetch(`${baseURL}/chat/completions`, {
+    const response = await fetch(`${config.baseUrl}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${config.apiKey}` },
       body: JSON.stringify({
-        model,
+        model: config.model,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userPrompt },
@@ -87,12 +131,31 @@ export async function generateResponse(
   }
 }
 
-/**
- * 纯闲聊回复（无具体意图时）
- */
-export async function generateChatResponse(userText: string): Promise<string | null> {
-  return generateResponse(userText, {
-    intent: "general_chat",
-    result: "用户没有明确指令，只是一般闲聊或简单问候",
-  });
+async function tryCFAI(
+  userText: string,
+  context: { intent: string; result: string; time?: string },
+): Promise<string | null> {
+  try {
+    const { getRequestContext } = await import("@cloudflare/next-on-pages");
+    const ai = getRequestContext().env.AI;
+    if (!ai) return null;
+
+    const userPrompt = `用户说：${userText}
+意图：${context.intent}
+结果：${context.result}
+请给用户一个简短的自然回复。`;
+
+    const result = await ai.run("@cf/qwen/qwen1.5-7b-chat-awq", {
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.7,
+      max_tokens: 200,
+    });
+
+    return result?.response || null;
+  } catch {
+    return null;
+  }
 }

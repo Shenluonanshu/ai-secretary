@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CalendarEvent, ChatMessage, EventDraft, BriefingData, QuickAction } from "@/lib/types";
-import { authFetch } from "@/lib/api";
+import { authFetch, getUserLLMConfig } from "@/lib/api";
 
 const WELCOME_MESSAGES: ChatMessage[] = [
   {
@@ -77,10 +77,19 @@ export function useChat() {
     setIsProcessing(true);
 
     try {
+      // 附带用户的 LLM 配置（如果设置了的话）
+      const llmConfig = getUserLLMConfig();
+      const body: Record<string, unknown> = { text, source: "text" };
+      if (llmConfig) {
+        body.apiKey = llmConfig.apiKey;
+        body.apiBaseUrl = llmConfig.baseUrl;
+        body.apiModel = llmConfig.model;
+      }
+
       const res = await authFetch("/api/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text, source: "text" }),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {

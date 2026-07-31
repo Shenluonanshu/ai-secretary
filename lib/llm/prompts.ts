@@ -14,6 +14,7 @@ export function buildSystemPrompt(now: Date): string {
 规则：上午6-12点，下午12-18点，晚上18-22点。未指定默认9:00。明天=+1天。三点=3:00=15:00。
 
 只输出JSON，不要其他内容。`;
+}
 
 export function buildUserPrompt(text: string): string {
   return `日程文本：${text}`;

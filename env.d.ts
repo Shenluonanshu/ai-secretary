@@ -17,6 +17,9 @@ declare global {
 
   interface CloudflareEnv {
     DB: D1Database;
+    AI?: {
+      run(model: string, input: Record<string, unknown>): Promise<{ response?: string }>;
+    };
   }
 }
 

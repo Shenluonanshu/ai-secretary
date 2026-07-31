@@ -10,15 +10,38 @@ import { parseChineseEvent } from "@/lib/date-parser";
 import { getNextHolidayCountdown, getUpcomingHolidays, detectHolidayMention, getHolidayName, getDayType } from "@/lib/holidays";
 import type { CalendarEvent, EventDraft, ChatMessage, BriefingData, HabitWithStreak } from "@/lib/types";
 
-const provider: LLMProvider = createProvider();
-const hasLLM = (process.env.OPENAI_API_KEY || "") !== "" && process.env.OPENAI_API_KEY !== "sk-your-key-here";
+const defaultProvider: LLMProvider = createProvider();
+
+// 判断是否有可用的 LLM（环境变量配置 或 用户传入 API Key）
+function hasLLMAvailable(userApiKey?: string): boolean {
+  if (userApiKey && userApiKey !== "sk-your-key-here") return true;
+  const envKey = process.env.OPENAI_API_KEY || "";
+  return envKey !== "" && envKey !== "sk-your-key-here";
+}
+
+interface UserLLMConfig {
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as {
       text?: string; source?: string; intent?: string; eventId?: string;
+      apiKey?: string;
+      apiBaseUrl?: string;
+      apiModel?: string;
     };
     const text = (body.text || "").trim();
+
+    // 用户自定义 LLM 配置
+    const userLLM: UserLLMConfig = {
+      apiKey: body.apiKey || undefined,
+      baseUrl: body.apiBaseUrl || undefined,
+      model: body.apiModel || undefined,
+    };
+    const hasUserKey = !!userLLM.apiKey && userLLM.apiKey !== "sk-your-key-here";
 
     if (body.intent === "confirm_event") {
       return NextResponse.json({ message: "日程已保存。", ok: true });
@@ -32,17 +55,13 @@ export async function POST(request: NextRequest) {
     const classification = await classifyIntent(text, now);
 
     // Try LLM-generated reply for enhanced naturalness
-    // Fallback to `reply` if LLM is unavailable
     async function reply(intentLabel: string, result: Record<string, unknown>): Promise<string> {
-      if (hasLLM) {
-        const conversational = await generateResponse(text, {
-          intent: intentLabel,
-          result: JSON.stringify(result),
-          time: now.toLocaleString("zh-CN"),
-        });
-        if (conversational) return conversational;
-      }
-      // Fallback to the default template text (set by caller)
+      const conversational = await generateResponse(text, {
+        intent: intentLabel,
+        result: JSON.stringify(result),
+        time: now.toLocaleString("zh-CN"),
+      }, userLLM);
+      if (conversational) return conversational;
       return (result._defaultText as string) || "收到 ✅";
     }
 
@@ -235,7 +254,7 @@ export async function POST(request: NextRequest) {
 
       // ── Free Time ──
       case "check_free_time": {
-        const asEvent = await tryParseEvent(text);
+        const asEvent = await tryParseEvent(text, userLLM);
         if (asEvent.draft) {
           const event: CalendarEvent = { ...asEvent.draft, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
           return NextResponse.json({ event, draft: asEvent.draft });
@@ -272,14 +291,14 @@ export async function POST(request: NextRequest) {
 
       // ── Create Event ──
       case "create_event": {
-        const result = await tryParseEvent(text);
+        const result = await tryParseEvent(text, userLLM);
         if (result.clarification) {
           // See if LLM can give a friendlier clarification
-          if (hasLLM) {
+          if (hasLLMAvailable(userLLM.apiKey)) {
             const friendly = await generateResponse(text, {
               intent: "create_event_failed", result: `解析失败原因：${result.clarification}`,
               time: now.toLocaleString("zh-CN"),
-            });
+            }, userLLM);
             if (friendly) return NextResponse.json({ clarification: friendly });
           }
           return NextResponse.json({ clarification: result.clarification });
@@ -336,7 +355,7 @@ export async function POST(request: NextRequest) {
       // ── General chat ──
       default: {
         if (isEventIntent(text)) {
-          const result = await tryParseEvent(text);
+          const result = await tryParseEvent(text, userLLM);
           if (result.draft) {
             const event: CalendarEvent = { ...result.draft, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
             return NextResponse.json({ event, draft: result.draft });
@@ -344,10 +363,8 @@ export async function POST(request: NextRequest) {
         }
 
         // Use LLM for open-ended chat
-        if (hasLLM) {
-          const reply = await generateChatResponse(text);
-          if (reply) return NextResponse.json({ messages: [textMsg(reply)] });
-        }
+        const chatReply = await generateChatResponse(text, userLLM);
+        if (chatReply) return NextResponse.json({ messages: [textMsg(chatReply)] });
 
         return NextResponse.json({ messages: [textMsg(getFallbackReply(text, classification.confidence))] });
       }
@@ -360,19 +377,22 @@ export async function POST(request: NextRequest) {
 
 // ── Helpers ──
 
-async function tryParseEvent(text: string): Promise<{ draft?: EventDraft; clarification?: string }> {
+async function tryParseEvent(text: string, userLLM?: UserLLMConfig): Promise<{ draft?: EventDraft; clarification?: string }> {
   // 优先使用规则引擎（快速、可靠、纯本地运算）
   const ruleResult = parseChineseEvent(text, new Date(), "text");
   if (ruleResult.draft) return { draft: ruleResult.draft };
 
   // 规则引擎失败 → 尝试 LLM
-  const apiKey = process.env.OPENAI_API_KEY || "";
+  const apiKey = userLLM?.apiKey || process.env.OPENAI_API_KEY || "";
   if (!apiKey || apiKey === "sk-your-key-here") {
-    return { clarification: ruleResult.clarification || "无法解析该日程，请提供更明确的时间和内容。" };
+    // 没有 API Key → 尝试 CF Workers AI
+    const cfResult = await createProvider("cf-ai").parseNaturalLanguage(text, new Date(), "text");
+    if (cfResult.draft) return { draft: cfResult.draft };
+    return { clarification: ruleResult.clarification || cfResult.clarification || "无法解析该日程。" };
   }
 
-  const baseURL = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
-  const model = process.env.LLM_MODEL || "gpt-4o-mini";
+  const baseURL = (userLLM?.baseUrl) || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+  const model = (userLLM?.model) || process.env.LLM_MODEL || "gpt-4o-mini";
 
   try {
     const response = await fetch(`${baseURL}/chat/completions`, {
