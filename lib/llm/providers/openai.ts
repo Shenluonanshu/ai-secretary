@@ -21,7 +21,7 @@ export class OpenAIProvider implements LLMProvider {
     try {
       const response = await fetch(`${baseURL}/chat/completions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+        headers: { "Content-Type": "application/json; charset=utf-8", "Authorization": `Bearer ${apiKey}` },
         body: JSON.stringify({
           model,
           messages: [
