@@ -360,8 +360,89 @@ export async function POST(request: NextRequest) {
 // ── Helpers ──
 
 async function tryParseEvent(text: string): Promise<{ draft?: EventDraft; clarification?: string }> {
-  const result: ParseResult = await provider.parseNaturalLanguage(text, new Date(), "text");
-  return { draft: result.draft, clarification: result.clarification };
+  const apiKey = process.env.OPENAI_API_KEY || "";
+  if (!apiKey || apiKey === "sk-your-key-here") {
+    // fallback to rule-based provider
+    const result = await provider.parseNaturalLanguage(text, new Date(), "text");
+    return { draft: result.draft, clarification: result.clarification };
+  }
+
+  const baseURL = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+  const model = process.env.LLM_MODEL || "gpt-4o-mini";
+
+  // 使用和 generateResponse 完全相同的 fetch 模式
+  const systemPrompt = `你是日历事件解析器。将用户中文输入转JSON。
+
+当前日期：${new Date().toLocaleDateString("zh-CN", {year:"numeric",month:"long",day:"numeric",weekday:"long"})}
+当前时间：${new Date().toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}
+
+输出格式：{"title":"事件名","startsAt":"2026-08-01T15:00:00+08:00","endsAt":"2026-08-01T16:00:00+08:00","allDay":false,"reminders":[30],"recurrence":"none"}
+
+规则：上午6-12点 下午12-18点 晚上18-22点。未指定默认9:00。明天=+1天。中文数字自动转换。只输出JSON。`;
+
+  try {
+    const response = await fetch(`${baseURL}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: text },
+        ],
+        temperature: 0.1,
+        max_tokens: 300,
+      }),
+    });
+
+    if (!response.ok) {
+      const result = await provider.parseNaturalLanguage(text, new Date(), "text");
+      return { draft: result.draft, clarification: result.clarification };
+    }
+
+    const data = await response.json() as { choices?: { message?: { content?: string } }[] };
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) {
+      return { clarification: "AI 未返回结果，请重试。" };
+    }
+
+    // 提取 JSON
+    let jsonStr = content.trim();
+    const m = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (m) jsonStr = m[1].trim();
+
+    const parsed = JSON.parse(jsonStr) as {
+      title?: string; startsAt?: string; endsAt?: string;
+      allDay?: boolean; reminders?: number[]; recurrence?: string;
+      clarification?: string; description?: string;
+    };
+
+    if (parsed.clarification) {
+      return { clarification: parsed.clarification };
+    }
+
+    if (!parsed.title || !parsed.startsAt) {
+      return { clarification: "未能解析出事件标题和时间，请重新描述。" };
+    }
+
+    return {
+      draft: {
+        title: parsed.title,
+        description: parsed.description ?? undefined,
+        startsAt: parsed.startsAt,
+        endsAt: parsed.endsAt || new Date(new Date(parsed.startsAt).getTime() + 3600000).toISOString(),
+        allDay: parsed.allDay ?? false,
+        timezone: "Asia/Shanghai",
+        reminders: parsed.reminders?.length ? parsed.reminders : [30],
+        recurrence: (parsed.recurrence as EventDraft["recurrence"]) ?? "none",
+        source: "text",
+      },
+    };
+  } catch (err) {
+    console.error("tryParseEvent error:", err);
+    const result = await provider.parseNaturalLanguage(text, new Date(), "text");
+    return { draft: result.draft, clarification: result.clarification };
+  }
 }
 
 function getFallbackReply(text: string, confidence: number): string {
